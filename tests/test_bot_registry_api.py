@@ -58,6 +58,84 @@ class BotRegistryApiTests(unittest.TestCase):
         registry["bots"].append(definition)
         return registry, definition
 
+    def test_status_includes_available_ram_in_gigabytes(self):
+        memory = SimpleNamespace(
+            used=8 * 1024**3,
+            total=16 * 1024**3,
+            available=6 * 1024**3,
+            percent=50.0,
+        )
+        disk = SimpleNamespace(
+            percent=50.0,
+            used=100 * 1024**3,
+            total=200 * 1024**3,
+            free=100 * 1024**3,
+        )
+        with patch.object(panel_app.psutil, "virtual_memory", return_value=memory), patch.object(
+            panel_app.psutil, "disk_usage", return_value=disk
+        ), patch.object(panel_app.psutil, "cpu_percent", return_value=10.0), patch.object(
+            panel_app, "get_panel_url", return_value="Unavailable"
+        ), patch.object(panel_app, "get_ssh_cmd", return_value="Unavailable"), patch.object(
+            panel_app, "get_bot_statuses", return_value={}
+        ):
+            response = self.client.get("/api/status")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["system"]["ram_available_gb"], 6.0)
+
+    def test_memory_card_shows_available_ram_instead_of_duplicate_utilization_meter(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn('id="ram-available"', page)
+        self.assertNotIn('id="ram-meter"', page)
+        self.assertIn("system.ram_available_gb", page)
+
+    def test_metric_charts_show_percent_axes_and_minute_time_rails(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn('id="cpu-chart" data-scale-step="25" data-window-seconds="180"', page)
+        self.assertIn('id="ram-chart" data-scale-step="25" data-window-seconds="60"', page)
+        self.assertIn('id="disk-chart" data-scale-step="25" data-window-seconds="60"', page)
+        self.assertIn('class="chart-y-axis"', page)
+        self.assertIn('class="chart-time-rail"', page)
+        self.assertIn("--chart-grid-color: #263237;", page)
+        self.assertIn(".chart-y-axis, .chart-time-rail { color:var(--chart-grid-color);", page)
+        self.assertIn(".chart-grid { stroke:var(--chart-grid-color);", page)
+        self.assertIn(".metric:not(.primary) .chart { height:150px; margin-top:auto; }", page)
+        self.assertIn("margin:8px 0; padding-top:0; border-top:0;", page)
+        self.assertIn("metrics: { cpu: [], ram: [], disk: [], maxPoints: 61 }", page)
+
+    def test_clear_logs_truncates_only_the_selected_log_file(self):
+        selected_log = self.root / "panel.log"
+        other_log = self.root / "hermes.log"
+        selected_log.write_text("first line\nsecond line\n", encoding="utf-8")
+        other_log.write_text("keep this log\n", encoding="utf-8")
+
+        with patch.dict(
+            panel_app.SERVICE_LOG_PATHS,
+            {"panel": str(selected_log), "hermes": str(other_log)},
+        ):
+            response = self.client.post("/api/logs/panel/clear")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(selected_log.read_text(encoding="utf-8"), "")
+        self.assertEqual(other_log.read_text(encoding="utf-8"), "keep this log\n")
+
+    def test_clear_logs_rejects_an_unknown_target(self):
+        response = self.client.post("/api/logs/not-a-target/clear")
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_logs_toolbar_exposes_and_wires_the_clear_action(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn('id="clear-logs"', page)
+        self.assertIn("`/api/logs/${encodeURIComponent(key)}/clear`", page)
+        self.assertIn("$('clear-logs').addEventListener('click', clearSelectedLogs)", page)
+
     def test_file_search_returns_matching_files_and_folders_below_current_path(self):
         current = self.root / "workspace"
         nested = current / "nested"
@@ -248,7 +326,7 @@ class BotRegistryApiTests(unittest.TestCase):
         self.assertIn('id="rail-connection-status"', page)
         self.assertIn("function setConnectionState(status, hint = '')", page)
         self.assertIn("['rail-connection-status', 'rail-connection-label']", page)
-        self.assertIn("setConnectionState('busy')", refresh_status)
+        self.assertNotIn("setConnectionState('busy')", refresh_status)
         self.assertIn("setConnectionState('connected')", refresh_status)
         self.assertIn("setConnectionState('error'", refresh_status)
         self.assertIn("state.logs.health = 'busy'", page)
@@ -283,6 +361,46 @@ class BotRegistryApiTests(unittest.TestCase):
         self.assertIn(".assistant-settings-panel { max-height:0; padding:0 11px;", page)
         self.assertIn("@media (prefers-reduced-motion: reduce)", page)
 
+    def test_fetched_model_list_escapes_provider_settings_clipping(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn(".assistant-sidebar.model-list-open { overflow:visible; }", page)
+        self.assertIn(".assistant-sidebar.model-list-open .assistant-settings-panel { overflow:visible; }", page)
+        self.assertIn("sidebar().classList.add('model-list-open')", page)
+        self.assertIn("sidebar().classList.remove('model-list-open')", page)
+
+    def test_provider_model_dropdown_icon_tracks_open_state(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn(".model-combo-toggle .lucide-icon { width:14px; height:14px; stroke-linecap:round;", page)
+        self.assertIn(".model-combo.open .model-combo-toggle .lucide-icon { transform:rotate(180deg); }", page)
+        self.assertIn("combo.classList.add('open')", page)
+        self.assertIn("combo.classList.remove('open')", page)
+
+    def test_provider_fields_reveal_long_values_on_hover_and_focus(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn("function revealProviderFieldText(field)", page)
+        self.assertIn("const PROVIDER_FIELD_SCROLL_SPEED = 24;", page)
+        self.assertIn("requestAnimationFrame(animate)", page)
+        self.assertIn("field.scrollTo({ left: 0, behavior });", page)
+        self.assertIn("field.addEventListener('mouseenter', reveal)", page)
+        self.assertIn("field.addEventListener('focus', reveal)", page)
+        self.assertIn("field.addEventListener('mouseleave', () => resetProviderFieldText(field, true))", page)
+        self.assertIn("field.addEventListener('blur', reset)", page)
+        self.assertIn("field.title = field.selectedOptions[0]?.textContent?.trim() || '';", page)
+
+    def test_provider_select_uses_the_model_picker_chevron(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn('<div class="provider-select-wrap"><select aria-label="Provider" class="field" id="assistant-provider-select"></select><span aria-hidden="true" class="provider-select-chevron"><span data-lucide="chevronDown"></span></span></div>', page)
+        self.assertIn(".provider-select-wrap .field { appearance:none;", page)
+        self.assertIn(".provider-select-chevron .lucide-icon { stroke-linecap:round; stroke-linejoin:round; }", page)
+
     def test_assistant_chat_list_renders_newest_sessions_first(self):
         response = self.client.get("/")
         page = response.get_data(as_text=True)
@@ -298,6 +416,23 @@ class BotRegistryApiTests(unittest.TestCase):
         self.assertIn(".assistant-session-item:hover .session-actions", page)
         self.assertIn(".assistant-session-item:focus-within .session-actions", page)
         self.assertIn("@media (hover:none)", page)
+
+    def test_assistant_actions_fade_and_chat_uses_vazirmatn_with_auto_direction(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn("family=Vazirmatn", page)
+        self.assertIn('--assistant-font: "Vazirmatn", var(--sans);', page)
+        self.assertIn(".assistant-chat { height:620px;", page)
+        self.assertIn("font-family:var(--assistant-font);", page)
+        self.assertIn(".assistant-chat .message-code-block, .assistant-chat .message-code-inline { font-family:var(--mono); }", page)
+        self.assertIn("transition:opacity .16s ease,visibility 0s linear .16s;", page)
+        self.assertIn(".assistant-message-group:hover .assistant-message-action", page)
+        self.assertIn("@media (prefers-reduced-motion: reduce)", page)
+        self.assertIn(".assistant-message-action { transition:none; }", page)
+        self.assertIn("class: `assistant-message ${message.role}`, dir: 'auto'", page)
+        self.assertIn('<textarea aria-label="Message Hermes" class="assistant-input field" dir="auto"', page)
+        self.assertIn("h('p', { dir: 'auto' })", page)
 
     def test_assistant_send_button_is_icon_only_and_inside_composer_input(self):
         response = self.client.get("/")
@@ -321,6 +456,22 @@ class BotRegistryApiTests(unittest.TestCase):
         page = response.get_data(as_text=True)
 
         self.assertIn(".bot-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:1px; background:var(--bg); }", page)
+
+    def test_bot_cards_show_pid_uptime_and_repository_for_empty_and_configured_fleets(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+        render_cards = page.split("function renderBotCards()", 1)[1].split(
+            "\nfunction dismissInstallJob", 1
+        )[0]
+
+        self.assertIn("h('div', { class: 'stat-label', text: 'PID' })", render_cards)
+        self.assertIn("h('div', { class: 'stat-label', text: 'UPTIME' })", render_cards)
+        self.assertIn("h('div', { class: 'stat-label', text: 'REPO' })", render_cards)
+        self.assertIn("displayBotRepository(bot.repository)", render_cards)
+        self.assertIn("data-bot-field': 'repository'", render_cards)
+        self.assertIn("function displayBotRepository(repository)", page)
+        self.assertIn("'https://github.com/'", page)
+        self.assertNotIn("'data-bot-field': 'restarts'", render_cards)
 
     def test_provider_handlers_do_not_reference_removed_settings_status(self):
         response = self.client.get("/")
@@ -353,7 +504,9 @@ class BotRegistryApiTests(unittest.TestCase):
     def test_status_reports_empty_fleet_without_default_bots(self):
         with (
             patch.object(panel_app.psutil, "cpu_percent", return_value=0),
-            patch.object(panel_app.psutil, "virtual_memory", return_value=SimpleNamespace(used=0, total=1, percent=0)),
+            patch.object(panel_app.psutil, "virtual_memory", return_value=SimpleNamespace(
+                used=0, total=1, available=1, percent=0
+            )),
             patch.object(panel_app.psutil, "disk_usage", return_value=SimpleNamespace(
                 percent=25,
                 used=2 * 1024**3,
@@ -390,6 +543,7 @@ class BotRegistryApiTests(unittest.TestCase):
 
         self.assertFalse(status["running"])
         self.assertFalse(status["error"])
+        self.assertEqual(status["repository"], definition["repository"])
 
     def test_environment_parser_ignores_full_line_comments(self):
         environment = panel_app.parse_environment_assignments(

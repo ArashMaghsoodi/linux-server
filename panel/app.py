@@ -769,6 +769,7 @@ def get_bot_statuses(registry=None):
         running = proc is not None
         statuses[bot_id] = {
             "name": definition["name"],
+            "repository": definition["repository"],
             "icon": definition.get("icon") or "🤖",
             "running": running,
             "error": bool(definition.get("enabled")) and not running,
@@ -1028,6 +1029,7 @@ def status():
             "cpu_percent": cpu,
             "ram_used_gb": round(ram.used / (1024**3), 2),
             "ram_total_gb": round(ram.total / (1024**3), 2),
+            "ram_available_gb": round(ram.available / (1024**3), 2),
             "ram_percent": ram.percent,
             "disk_percent": disk.percent,
             "disk_used_gb": round(disk.used / (1024**3), 2),
@@ -1334,6 +1336,22 @@ def get_logs(bot_key):
         except Exception as e:
             return jsonify({"error": str(e)}), 500
     return jsonify({"logs": "Log file not found or empty.", "total_lines": 0})
+
+@app.route("/api/logs/<bot_key>/clear", methods=["POST"])
+@login_required
+def clear_logs(bot_key):
+    definition = get_bot_definition(bot_key)
+    if definition is None and bot_key not in SERVICE_LOG_PATHS:
+        return jsonify({"error": "Unknown log target"}), 404
+
+    log_path = SERVICE_LOG_PATHS[bot_key] if bot_key in SERVICE_LOG_PATHS else get_bot_info(definition)["log_path"]
+    try:
+        with open(log_path, "w", encoding="utf-8"):
+            pass
+    except OSError:
+        app.logger.exception("Could not clear logs for %s", bot_key)
+        return jsonify({"error": "Unable to clear logs"}), 500
+    return jsonify({"success": True})
 
 @app.route("/api/env/<env_key>")
 @login_required

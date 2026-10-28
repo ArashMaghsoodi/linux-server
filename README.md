@@ -134,7 +134,7 @@ This project builds on the work of these projects and their contributors:
 | Project | Use |
 | --- | --- |
 | [Hermes Agent](https://github.com/NousResearch/hermes-agent) | Assistant and Telegram gateway (MIT). |
-| [9Router](https://github.com/decolua/9router) | Optional local AI gateway, run from the upstream Docker image. Its repository does not currently show a root-level license file; review upstream terms before redistributing it. |
+| [9Router](https://github.com/decolua/9router) | Optional local AI gateway, run from the upstream Docker image. |
 | [cloudflared](https://github.com/cloudflare/cloudflared) and [Tailscale](https://github.com/tailscale/tailscale) | Panel tunnel and private-network connectivity tools. |
 
 These projects are independently maintained; their respective licenses and terms apply. This list highlights directly used tools and is not a complete inventory of their transitive dependencies or the GitHub-hosted runner's preinstalled software.

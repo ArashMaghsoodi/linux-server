@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Server Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg: #0b0e10;
@@ -21,6 +24,9 @@
   --text-3: #6f7d80;
   --accent: #73d0d2;
   --accent-2: #9be0df;
+  --chart-grid-color: #263237;
+  --chart-rail-color: #59676a;
+  --assistant-font: "Vazirmatn", var(--sans);
   --good: #78c99d;
   --warn: #e1b56b;
   --bad: #df7f7b;
@@ -104,7 +110,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 @media (prefers-reduced-motion: reduce) {
   .connection .dot, .host-mini-status .dot, .status-indicator .log-state-dot, .status-indicator .model-status-dot { animation:none; }
-  .assistant-settings-panel { transition:none !important; transform:none; }
+  .assistant-message-action { transition:none; }
+  .assistant-settings-panel, .model-combo-toggle .lucide-icon { transition:none !important; }
+  .assistant-settings-panel { transform:none; }
 }
 
 .content { padding-top:30px; }
@@ -130,23 +138,25 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .metric-number { font-size:30px; line-height:1; letter-spacing:-.04em; font-weight:650; }
 .metric-unit { color:#69777a; font-size:11px; }
 .metric-detail { margin-top:5px; color:#69777a; font-family:var(--mono); font-size:9px; }
-.memory-utilization { margin-top:12px; }
-.memory-utilization-head { display:flex; justify-content:space-between; gap:8px; color:#59676a; font-family:var(--mono); font-size:8px; text-transform:uppercase; }
-.memory-utilization-head strong { color:#a8b3b4; font-weight:500; font-variant-numeric:tabular-nums; }
-.memory-utilization-track { height:4px; margin-top:6px; overflow:hidden; background:#263136; }
-.memory-utilization-track > div { width:0; height:100%; background:var(--accent); transition:width .3s ease; }
-.chart { margin-top:17px; height:190px; }
-.metric.primary .chart { flex:1; min-height:190px; height:auto; }
+.memory-available { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin:8px 0; padding-top:0; border-top:0; }
+.memory-available-label { color:#879497; font-family:var(--mono); font-size:11px; text-transform:uppercase; }
+.memory-available-value { color:#a8b3b4; font-family:var(--mono); font-size:11px; font-weight:500; font-variant-numeric:tabular-nums; }
+.chart { display:grid; grid-template-columns:34px minmax(0,1fr); grid-template-rows:minmax(0,1fr) 16px; column-gap:8px; row-gap:5px; margin-top:17px; height:210px; min-width:0; }
+.metric.primary .chart { flex:1; min-height:210px; height:auto; }
 .metric:not(.primary) { display:flex; flex-direction:column; }
-.metric:not(.primary) .chart { height:100px; margin-top:auto; }
-.chart svg { width:100%; height:100%; display:block; overflow:visible; }
-.chart-grid { stroke:#263237; stroke-width:1; opacity:.75; vector-effect:non-scaling-stroke; }
+.metric:not(.primary) .chart { height:150px; margin-top:auto; }
+.chart-y-axis, .chart-time-rail { color:var(--chart-grid-color); font-family:var(--mono); font-size:11px; font-variant-numeric:tabular-nums; }
+.chart-y-axis { display:flex; flex-direction:column; justify-content:space-between; line-height:1; text-align:center; }
+.chart-plot { position:relative; min-width:0; min-height:0; }
+.chart-plot svg { width:100%; height:100%; display:block; overflow:visible; }
+.chart-grid { stroke:var(--chart-grid-color); stroke-width:1; vector-effect:non-scaling-stroke; }
 .chart-area { fill:rgba(115,208,210,.075); }
 .chart-line { fill:none; stroke:var(--accent); stroke-width:2; vector-effect:non-scaling-stroke; }
-.chart-empty { display:grid; place-items:center; height:100%; border-top:1px solid #202a2e; color:#566367; font-family:var(--mono); font-size:9px; letter-spacing:.05em; }
+.chart-empty { position:absolute; inset:0; display:grid; place-items:center; border-top:1px solid #202a2e; color:#879497; font-family:var(--mono); font-size:11px; letter-spacing:.05em; }
+.chart-time-rail { grid-column:2; display:flex; justify-content:space-between; }
 .metric-footer { display:flex; justify-content:space-between; gap:10px; margin-top:7px; color:#59676a; font-family:var(--mono); font-size:9px; }
 .metric-footer strong { color:#a8b3b4; font-weight:500; }
-.disk-summary { display:flex; align-items:center; gap:18px; margin-top:16px; }
+.disk-summary { display:flex; align-items:center; gap:18px; margin-top:16px; margin-bottom: 10px; }
 .disk-ring { width:64px; height:64px; flex:0 0 64px; }
 .disk-ring svg { width:100%; height:100%; transform:rotate(-90deg); }
 .ring-bg { fill:none; stroke:#263136; stroke-width:5; }
@@ -186,7 +196,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .bot-stat { padding:10px 8px; border-right:1px solid #222c30; }
 .bot-stat:last-child { border-right:0; }
 .stat-label { color:#59676b; font-size:8px; letter-spacing:.12em; text-transform:uppercase; }
-.stat-value { margin-top:4px; color:#cbd4d4; font-family:var(--mono); font-size:10px; }
+.stat-value { margin-top:4px; color:#cbd4d4; font-family:var(--mono); font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .bot-actions { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; }
 .bot-actions .btn { justify-content:center; }
 .bot-actions .btn-management { grid-column:auto; }
@@ -217,7 +227,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .add-bot-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
 .add-bot-form .wide { grid-column:1/-1; }
 .combo-control, .model-combo { position:relative; }
+.provider-select-wrap { position:relative; flex:1; min-width:0; }
+.provider-select-wrap .field { appearance:none; padding-right:29px; }
+.provider-select-chevron { position:absolute; top:50%; right:10px; transform:translateY(-50%); color:#728084; pointer-events:none; }
+.provider-select-chevron .lucide-icon { stroke-linecap:round; stroke-linejoin:round; }
 .combo-toggle, .model-combo-toggle { position:absolute; right:5px; top:50%; transform:translateY(-50%); border:0; background:transparent; color:#728084; cursor:pointer; }
+.model-combo-toggle .lucide-icon { width:14px; height:14px; stroke-linecap:round; stroke-linejoin:round; transition:transform .18s ease; }
+.model-combo.open .model-combo-toggle .lucide-icon { transform:rotate(180deg); }
+.model-combo.has-options .field { padding-right:29px; }
 .combo-options, .model-combo-list { position:absolute; z-index:30; left:0; right:0; top:calc(100% + 4px); max-height:220px; overflow:auto; border:1px solid #3a474c; background:#11171a; box-shadow:0 18px 45px rgba(0,0,0,.42); padding:4px; }
 .combo-options { top:auto; bottom:calc(100% + 4px); }
 .combo-option { width:100%; border:0; background:transparent; color:#b8c2c3; text-align:left; padding:7px 8px; cursor:pointer; border-radius:3px; font-family:var(--mono); font-size:10px; }
@@ -305,7 +322,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .file-preview-content { padding-right:15px; padding-left:12px; color:inherit; white-space:pre; }
 
 /* Assistant */
-.assistant-chat { height:620px; min-height:0; display:grid; grid-template-columns:220px minmax(0,1fr); position:relative; transition:grid-template-columns .2s ease; }
+.assistant-chat { height:620px; min-height:0; display:grid; grid-template-columns:220px minmax(0,1fr); position:relative; transition:grid-template-columns .2s ease; font-family:var(--assistant-font); }
 .assistant-chat.sidebar-collapsed { grid-template-columns:52px minmax(0,1fr); }
 .assistant-sidebar { background:#0f1417; border-right:1px solid var(--line); display:flex; flex-direction:column; min-width:0; min-height:0; overflow:hidden; }
 .assistant-sidebar.collapsed .assistant-sidebar-title,
@@ -340,6 +357,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .assistant-sidebar-divider { border-top:1px solid var(--line); }
 .assistant-settings-panel { max-height:0; padding:0 11px; border-bottom:1px solid transparent; opacity:0; transform:translateY(-6px); visibility:hidden; overflow:hidden; transition:max-height .28s ease, padding .28s ease, opacity .18s ease, transform .18s ease, border-color .28s ease, visibility 0s linear .28s; }
 .assistant-sidebar.settings-open .assistant-settings-panel { max-height:480px; padding:11px; border-bottom-color:var(--line); opacity:1; transform:translateY(0); visibility:visible; transition:max-height .28s ease, padding .28s ease, opacity .2s ease .04s, transform .2s ease .04s, border-color .28s ease, visibility 0s; }
+.assistant-sidebar.model-list-open { overflow:visible; }
+.assistant-sidebar.model-list-open .assistant-settings-panel { overflow:visible; }
 .assistant-settings-title { color:#718083; font-size:9px; font-weight:700; letter-spacing:.13em; text-transform:uppercase; margin-bottom:9px; }
 .assistant-settings-row { display:flex; gap:5px; margin-bottom:6px; }
 .assistant-settings-actions { display:flex; gap:5px; margin-top:7px; }
@@ -360,22 +379,26 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .assistant-message-content { display:flex; flex-direction:column; align-items:flex-start; width:fit-content; max-width:75%; min-width:0; }
 .assistant-message-group.assistant .assistant-message-actions { align-self:flex-end; }
 .assistant-message-group.user .assistant-message-content { align-self:flex-end; }
-.assistant-message { width:fit-content; max-width:100%; min-width:0; padding:11px 13px; border:1px solid #252f33; border-radius:5px; background:#12181b; color:#c6cece; font-size:12px; line-height:1.6; overflow-wrap:anywhere; }
+.assistant-message { width:fit-content; max-width:100%; min-width:0; padding:0 13px; border:1px solid #252f33; border-radius:5px; background:#12181b; color:#c6cece; font-size:12px; line-height:1.6; text-align:start; overflow-wrap:anywhere; }
 .assistant-message.user { background:#142024; border-color:#294148; }
 .assistant-message.assistant { background:#101619; }
+.assistant-chat .message-code-block, .assistant-chat .message-code-inline { font-family:var(--mono); }
 .assistant-message-actions { display:flex; gap:5px; }
-.assistant-message-action { opacity:0; visibility:hidden; pointer-events:none; border:0; background:transparent; color:#687679; font-size:9px; cursor:pointer; padding:4px 2px; }
-.assistant-message-group:hover .assistant-message-action,.assistant-message-group:focus-within .assistant-message-action { opacity:1; visibility:visible; pointer-events:auto; }
+.assistant-message-action { opacity:0; visibility:hidden; pointer-events:none; border:0; background:transparent; color:#687679; font-size:9px; cursor:pointer; padding:4px 2px; transition:opacity .16s ease,visibility 0s linear .16s; }
+.assistant-message-group:hover .assistant-message-action,.assistant-message-group:focus-within .assistant-message-action { opacity:1; visibility:visible; pointer-events:auto; transition:opacity .16s ease,visibility 0s; }
 .assistant-composer { min-height:var(--assistant-bottom-rail); max-height:200px; flex:0 0 auto; display:flex; align-items:center; padding:8px 12px; border-top:0; }
 .assistant-input-wrap { flex:1; min-width:0; max-height:184px; display:flex; align-items:center; gap:6px; padding:4px 6px 4px 0; border:1px solid #303b40; border-radius:5px; background:#0f1417; }
 .assistant-input-wrap:focus-within { border-color:#3d4c52; }
-.assistant-input { flex:1; width:0; min-width:0; height:34px; min-height:34px; max-height:174px; padding:4px 9px; border:0; border-radius:0; background:transparent; line-height:18px; resize:none; overflow-y:auto; }
+.assistant-input { flex:1; width:0; min-width:0; height:34px; min-height:34px; max-height:174px; padding:4px 9px; border:0; border-radius:0; background:transparent; line-height:18px; resize:none; overflow-y:auto; font-family:var(--assistant-font); }
 .assistant-send { flex:0 0 30px; width:30px; min-width:30px; height:30px; padding:0; }
 .assistant-send.is-busy { width:auto; min-width:58px; padding:0 8px; }
 .assistant-send .lucide-icon { width:16px; height:16px; }
 .assistant-activity { padding:0 13px 6px; color:#586568; font-family:var(--mono); font-size:9px; }
 .assistant-drawer-toggle { display:none; }
 .assistant-sidebar-backdrop { display:none; }
+@media (hover:none) {
+  .assistant-message-action { opacity:1; visibility:visible; pointer-events:auto; transition:none; }
+}
 
 /* Toasts/dialogs */
 .toast-container { position:fixed; right:22px; bottom:22px; z-index:1000; display:flex; flex-direction:column; gap:7px; }
@@ -545,7 +568,7 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
             <div class="metric-head"><div class="metric-name">CPU usage</div><div class="metric-range">last 3 min</div></div>
             <div class="metric-main"><span class="metric-number" id="cpu-val">—</span><span class="metric-unit">%</span></div>
             <div class="metric-detail" id="uptime-val">Uptime —</div>
-            <div class="chart" id="cpu-chart"></div>
+            <div class="chart" id="cpu-chart" data-scale-step="25" data-window-seconds="180"></div>
             <div class="metric-footer"><span>current <strong id="cpu-current-label">—</strong></span><span>sampled every 3s</span></div>
             <div class="progress" hidden><div id="cpu-progress"></div></div>
           </article>
@@ -553,19 +576,16 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
             <div class="metric-head"><div class="metric-name">Memory</div><div class="metric-range">RAM</div></div>
             <div class="metric-main"><span class="metric-number" id="ram-val">—</span></div>
             <div class="metric-detail" id="ram-detail">— / — GB</div>
-                        <div class="memory-utilization">
-                            <div class="memory-utilization-head"><span>Used capacity</span><strong id="ram-percent">—%</strong></div>
-                            <div class="memory-utilization-track" id="ram-meter" role="meter" aria-label="Memory used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="ram-progress"></div></div>
-                        </div>
-            <div class="chart" id="ram-chart"></div>
+            <div class="memory-available"><span class="memory-available-label">Available</span><strong class="memory-available-value" id="ram-available">—</strong></div>
+            <div class="chart" id="ram-chart" data-scale-step="25" data-window-seconds="60"></div>
           </article>
           <article class="metric">
-            <div class="metric-head"><div class="metric-name">Disk usage</div><div class="metric-range">storage</div></div>
+            <div class="metric-head"><div class="metric-name">Disk usage</div><div class="metric-range">Storage</div></div>
             <div class="disk-summary">
               <div class="disk-ring" id="disk-ring"><svg viewBox="0 0 44 44"><circle class="ring-bg" cx="22" cy="22" r="17"></circle><circle class="ring-fill" id="disk-ring-fill" cx="22" cy="22" r="17" stroke-dasharray="106.81" stroke-dashoffset="106.81"></circle></svg></div>
               <div class="disk-copy"><div class="metric-main" style="margin-top:0"><span class="metric-number" id="disk-val">—</span><span class="metric-unit">%</span></div><div class="metric-detail" id="disk-detail">Storage metric unavailable</div></div>
             </div>
-            <div class="chart" id="disk-chart"></div>
+            <div class="chart" id="disk-chart" data-scale-step="25" data-window-seconds="60"></div>
             <div class="progress" hidden><div id="disk-progress"></div></div>
           </article>
         </div>
@@ -615,7 +635,7 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
         </div>
 
         <div id="tab-logs">
-          <div class="console-toolbar"><div class="log-search-wrap"><span aria-hidden="true" class="log-search-icon" data-lucide="funnel"></span><input class="log-search field" id="log-search" placeholder="Filter logs…" type="search"></div><button class="btn btn-pause" id="pause-logs" type="button"><span data-lucide="pause"></span><span>Pause</span></button><button aria-label="Copy visible logs" class="btn" id="copy-logs" title="Copy visible logs" type="button"><span data-lucide="copy"></span><span>Copy</span></button><div class="log-meta" id="log-count">0 lines</div><div aria-live="polite" class="log-state status-indicator" data-state="busy" id="log-state" role="status"><span class="log-state-dot"></span><span id="log-state-text">BUSY</span></div></div>
+          <div class="console-toolbar"><div class="log-search-wrap"><span aria-hidden="true" class="log-search-icon" data-lucide="funnel"></span><input class="log-search field" id="log-search" placeholder="Filter logs…" type="search"></div><button class="btn btn-pause" id="pause-logs" type="button"><span data-lucide="pause"></span><span>Pause</span></button><button aria-label="Copy visible logs" class="btn" id="copy-logs" title="Copy visible logs" type="button"><span data-lucide="copy"></span><span>Copy</span></button><button aria-label="Clear selected logs" class="btn btn-delete" id="clear-logs" title="Clear selected logs" type="button"><span data-lucide="trash"></span><span>Clear logs</span></button><div class="log-meta" id="log-count">0 lines</div><div aria-live="polite" class="log-state status-indicator" data-state="busy" id="log-state" role="status"><span class="log-state-dot"></span><span id="log-state-text">BUSY</span></div></div>
           <div class="console-body"><div class="logs-box" id="logs-content">Loading logs…</div></div>
         </div>
 
@@ -644,7 +664,7 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
                 <div class="assistant-sidebar-header"><div class="assistant-sidebar-title">Sessions</div><div class="assistant-sidebar-actions"><button aria-label="New chat" class="assistant-sidebar-toggle assistant-new-chat" id="new-chat-btn" title="New chat" type="button"><span data-lucide="plus"></span></button><button aria-label="Collapse sidebar" class="assistant-sidebar-toggle" id="sidebar-toggle-btn" title="Collapse sidebar" type="button"><span data-lucide="chevronLeft"></span></button></div></div>
                 <div class="assistant-session-list" id="assistant-session-list"><div class="assistant-session-empty">No sessions loaded</div></div>
                 <div class="assistant-sidebar-divider"></div>
-                <div class="assistant-settings-panel"><div class="assistant-settings-title">Provider settings</div><div class="assistant-settings-row"><select aria-label="Provider" class="field" id="assistant-provider-select"></select></div><div class="assistant-settings-row" hidden id="assistant-base-url-row"><input aria-label="Base URL" class="field" id="assistant-base-url" placeholder="Base URL" type="url"></div><div class="assistant-settings-row"><input aria-label="API key" autocomplete="off" class="field" id="assistant-api-key" placeholder="API key or token" type="password"></div><div class="assistant-settings-row"><div class="model-combo" id="assistant-model-combo"><input aria-autocomplete="list" aria-controls="assistant-model-list" aria-expanded="false" autocomplete="off" class="field" id="assistant-model" placeholder="Model ID" role="combobox" spellcheck="false" type="text"><button aria-label="Show fetched models" class="model-combo-toggle" hidden id="assistant-model-toggle" tabindex="-1" type="button"><span data-lucide="chevronDown"></span></button><div class="model-combo-list" hidden id="assistant-model-list" role="listbox"></div></div><button class="btn" id="assistant-fetch-btn" type="button">Fetch</button></div><div class="assistant-settings-actions"><button class="btn btn-start btn-grow" id="assistant-save-btn" type="button">Save &amp; restart</button><button class="btn" id="assistant-cancel-btn" type="button">Cancel</button></div>
+                <div class="assistant-settings-panel"><div class="assistant-settings-title">Provider settings</div><div class="assistant-settings-row"><div class="provider-select-wrap"><select aria-label="Provider" class="field" id="assistant-provider-select"></select><span aria-hidden="true" class="provider-select-chevron"><span data-lucide="chevronDown"></span></span></div></div><div class="assistant-settings-row" hidden id="assistant-base-url-row"><input aria-label="Base URL" class="field" id="assistant-base-url" placeholder="Base URL" type="url"></div><div class="assistant-settings-row"><input aria-label="API key" autocomplete="off" class="field" id="assistant-api-key" placeholder="API key or token" type="password"></div><div class="assistant-settings-row"><div class="model-combo" id="assistant-model-combo"><input aria-autocomplete="list" aria-controls="assistant-model-list" aria-expanded="false" autocomplete="off" class="field" id="assistant-model" placeholder="Model ID" role="combobox" spellcheck="false" type="text"><button aria-label="Show fetched models" class="model-combo-toggle" hidden id="assistant-model-toggle" tabindex="-1" type="button"><span data-lucide="chevronDown"></span></button><div class="model-combo-list" hidden id="assistant-model-list" role="listbox"></div></div><button class="btn" id="assistant-fetch-btn" type="button">Fetch</button></div><div class="assistant-settings-actions"><button class="btn btn-start btn-grow" id="assistant-save-btn" type="button">Save &amp; restart</button><button class="btn" id="assistant-cancel-btn" type="button">Cancel</button></div>
             </div>
                 <div class="assistant-sidebar-footer"><button class="btn btn-start" id="providers-btn" type="button">Providers</button><button aria-label="Providers" class="assistant-rail-btn" id="rail-providers-btn" title="Providers" type="button"><span data-lucide="slidersHorizontal"></span></button></div>
               </aside>
@@ -652,7 +672,7 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
               <div class="assistant-main">
                 <div class="assistant-model-strip"><button class="btn btn-compact assistant-drawer-toggle" id="sessions-open-btn" type="button">Chats</button><span class="assistant-model-label">Active model</span><span class="assistant-model-value" id="assistant-model-name">—</span><div aria-live="polite" class="model-status status-indicator" data-state="busy" id="assistant-model-status" role="status"><span class="model-status-dot"></span><span class="model-status-text">BUSY</span></div></div>
                 <div class="assistant-messages" id="assistant-messages"></div><div class="assistant-activity" id="assistant-activity"></div>
-                <div class="assistant-composer"><div class="assistant-input-wrap"><textarea aria-label="Message Hermes" class="assistant-input field" id="assistant-input" placeholder="Ask Hermes to inspect or manage the server…" rows="2"></textarea><button aria-label="Send message" class="btn btn-start assistant-send" id="assistant-send" title="Send message" type="button"><span data-lucide="sendHorizontal"></span></button></div></div>
+                <div class="assistant-composer"><div class="assistant-input-wrap"><textarea aria-label="Message Hermes" class="assistant-input field" dir="auto" id="assistant-input" placeholder="Ask Hermes to inspect or manage the server…" rows="2"></textarea><button aria-label="Send message" class="btn btn-start assistant-send" id="assistant-send" title="Send message" type="button"><span data-lucide="sendHorizontal"></span></button></div></div>
               </div>
             </div>
           </div>
@@ -853,8 +873,8 @@ const state = {
     comboOpenId: null,
     comboActiveIndex: -1,
     pendingBots: new Set(),   // bots with a start/stop/restart request in flight
-    logs: { raw: '', paused: false, target: '', health: 'busy' },
-    metrics: { cpu: [], ram: [], disk: [], maxPoints: 60 },   // health: connecting | live | error
+    logs: { raw: '', paused: false, target: '', health: 'busy', requestId: 0 },
+    metrics: { cpu: [], ram: [], disk: [], maxPoints: 61 },   // health: connecting | live | error
     env: { data: {}, masked: true, notice: '' },
     files: { path: '', parent: null, query: '', searchTimer: null, searchRequestId: 0, pendingDelete: null, previews: [], activePreviewPath: '', previewRequestId: 0 },
     assistant: {
@@ -1101,7 +1121,7 @@ function parseChatTask(content) {
 }
 
 function appendChatListItem(listItem, lines, state, parentIndent) {
-    const paragraph = h('p');
+    const paragraph = h('p', { dir: 'auto' });
     listItem.append(paragraph);
     const item = parseChatListItem(lines[state.index - 1]);
     const task = parseChatTask(item.content);
@@ -1188,7 +1208,7 @@ function appendChatListBlocks(target, lines, state, parentIndent) {
                 list = h(type);
                 target.append(list);
             }
-            listItem = h('li');
+            listItem = h('li', { dir: 'auto' });
             list.append(listItem);
             state.index += 1;
             appendChatListItem(listItem, lines, state, parentIndent);
@@ -1210,7 +1230,7 @@ function appendChatParagraph(target, lines, state) {
     }
     if (!paragraphLines.length) return;
 
-    const paragraph = h('p');
+    const paragraph = h('p', { dir: 'auto' });
     appendChatLines(paragraph, paragraphLines);
     target.append(paragraph);
 }
@@ -1258,7 +1278,7 @@ function appendChatTable(target, lines, state) {
     const head = h('thead');
     const headerRow = h('tr');
     headers.forEach(cell => {
-        const header = h('th');
+        const header = h('th', { dir: 'auto' });
         appendChatInline(header, cell);
         headerRow.append(header);
     });
@@ -1269,7 +1289,7 @@ function appendChatTable(target, lines, state) {
         rows.forEach(row => {
             const tableRow = h('tr');
             headers.forEach((_, index) => {
-                const cell = h('td');
+                const cell = h('td', { dir: 'auto' });
                 appendChatInline(cell, row[index] || '');
                 tableRow.append(cell);
             });
@@ -1377,6 +1397,12 @@ function syncBotButtons(key) {
     });
 }
 
+function displayBotRepository(repository) {
+    const githubPrefix = 'https://github.com/';
+    if (typeof repository !== 'string' || !repository) return '—';
+    return repository.startsWith(githubPrefix) ? `~/${repository.slice(githubPrefix.length)}` : repository;
+}
+
 function renderBotCards() {
     const grid = $('bot-grid');
     if (!grid) return;
@@ -1393,9 +1419,9 @@ function renderBotCards() {
                         h('div', {}, h('div', { class: 'bot-name', text: 'No bots yet' }), h('div', { class: 'bot-id', text: 'install a bot from GitHub to begin' }))),
                     h('div', { class: 'status stopped' }, h('span', { class: 'status-dot' }), 'EMPTY')),
                 h('div', { class: 'bot-stats' },
-                    h('div', { class: 'bot-stat' }, h('div', { class: 'stat-label', text: 'Status' }), h('div', { class: 'stat-value', text: 'waiting' })),
-                    h('div', { class: 'bot-stat' }, h('div', { class: 'stat-label', text: 'Repo' }), h('div', { class: 'stat-value', text: '—' })),
-                    h('div', { class: 'bot-stat' }, h('div', { class: 'stat-label', text: 'Runs' }), h('div', { class: 'stat-value', text: '0' }))
+                    h('div', { class: 'bot-stat' }, h('div', { class: 'stat-label', text: 'PID' }), h('div', { class: 'stat-value', text: '—' })),
+                    h('div', { class: 'bot-stat' }, h('div', { class: 'stat-label', text: 'UPTIME' }), h('div', { class: 'stat-value', text: '—' })),
+                    h('div', { class: 'bot-stat' }, h('div', { class: 'stat-label', text: 'REPO' }), h('div', { class: 'stat-value', text: '—' }))
                 )));
             return;
         }
@@ -1411,8 +1437,8 @@ function renderBotCards() {
                     h('span', { class: 'status-dot' }), h('span', { 'data-bot-field': 'status', text: bot.running ? 'RUNNING' : bot.error ? 'ERROR' : 'STOPPED' }))),
             h('div', { class: 'bot-stats' },
                 h('div', { class: 'bot-stat' }, h('div', { class: 'stat-label', text: 'PID' }), h('div', { class: 'stat-value', 'data-bot-field': 'pid', text: bot.pid || '—' })),
-                h('div', { class: 'bot-stat' }, h('div', { class: 'stat-label', text: 'Uptime' }), h('div', { class: 'stat-value', 'data-bot-field': 'uptime', text: bot.uptime || '—' })),
-                h('div', { class: 'bot-stat' }, h('div', { class: 'stat-label', text: 'Restarts' }), h('div', { class: 'stat-value', 'data-bot-field': 'restarts', text: bot.restarts ?? 0 }))),
+                h('div', { class: 'bot-stat' }, h('div', { class: 'stat-label', text: 'UPTIME' }), h('div', { class: 'stat-value', 'data-bot-field': 'uptime', text: bot.uptime || '—' })),
+                h('div', { class: 'bot-stat' }, h('div', { class: 'stat-label', text: 'REPO' }), h('div', { class: 'stat-value', 'data-bot-field': 'repository', title: bot.repository || '', text: displayBotRepository(bot.repository) }))),
             h('div', { class: 'bot-actions' },
                 h('button', { class: 'btn btn-start', type: 'button', 'data-bot': key, 'data-action': 'start' }, h('span', { html: ICONS.play }), 'Start'),
                 h('button', { class: 'btn btn-management', type: 'button', 'data-bot': key, 'data-action': 'restart' }, h('span', { html: ICONS.rotateCw }), 'Restart'),
@@ -1445,7 +1471,9 @@ function renderBotCards() {
         iconButton.setAttribute('aria-label', `Change ${bot.name || key} icon`);
         card.querySelector('[data-bot-field="pid"]').textContent = bot.pid || '—';
         card.querySelector('[data-bot-field="uptime"]').textContent = bot.uptime || '—';
-        card.querySelector('[data-bot-field="restarts"]').textContent = bot.restarts ?? 0;
+        const repository = card.querySelector('[data-bot-field="repository"]');
+        repository.textContent = displayBotRepository(bot.repository);
+        repository.title = bot.repository || '';
     });
     syncBotButtons();
 }
@@ -1966,27 +1994,30 @@ function getDiskMetric(system) {
     return { percent, used: metricNumber(used), total: metricNumber(total), free: metricNumber(free) };
 }
 
-function pushMetric(key, value) {
+function pushMetric(key, value, windowSeconds) {
     const n = metricNumber(value);
     if (n == null) return;
     const values = state.metrics[key];
-    values.push(Math.max(0, n));
-    if (values.length > state.metrics.maxPoints) values.splice(0, values.length - state.metrics.maxPoints);
+    const timestamp = Date.now();
+    values.push({ value: Math.max(0, n), timestamp });
+    const cutoff = timestamp - windowSeconds * 1000;
+    while (values.length && values[0].timestamp < cutoff) values.shift();
+    const maxSamples = Math.min(state.metrics.maxPoints, Math.floor(windowSeconds * 1000 / POLL_STATUS_MS) + 1);
+    if (values.length > maxSamples) values.splice(0, values.length - maxSamples);
 }
 
-function renderMetricChart(id, values, maxValue = 100) {
+function renderMetricChart(id, values) {
     const el = $(id);
     if (!el) return;
-    if (!values.length) {
-        el.innerHTML = '<div class="chart-empty">NO HISTORY AVAILABLE</div>';
-        return;
-    }
-    const w = 720, h = 190, pad = { l: 2, r: 2, t: 10, b: 10 };
+    const scaleStep = Number(el.dataset.scaleStep);
+    const windowSeconds = Number(el.dataset.windowSeconds);
+    const windowMs = windowSeconds * 1000;
+    const now = Date.now();
+    const w = 720, h = 180, pad = { l: 2, r: 2, t: 4, b: 4 };
     const innerW = w - pad.l - pad.r, innerH = h - pad.t - pad.b;
-    const denom = Math.max(1, values.length - 1);
-    const points = values.map((v, i) => {
-        const x = pad.l + innerW * (i / denom);
-        const y = pad.t + innerH * (1 - Math.min(v, maxValue) / maxValue);
+    const points = values.map(sample => {
+        const x = pad.l + innerW * Math.max(0, Math.min(1, (sample.timestamp - (now - windowMs)) / windowMs));
+        const y = pad.t + innerH * (1 - Math.min(sample.value, 100) / 100);
         return [x, y];
     });
     const slopes = points.slice(1).map((point, index) =>
@@ -2008,12 +2039,24 @@ function renderMetricChart(id, values, maxValue = 100) {
         const control2 = [point[0] - dx / 3, point[1] - tangents[index] * dx / 3];
         return `C ${control1[0].toFixed(1)} ${control1[1].toFixed(1)} ${control2[0].toFixed(1)} ${control2[1].toFixed(1)} ${point[0].toFixed(1)} ${point[1].toFixed(1)}`;
     }).join(' ');
-    const area = `${line} L ${points.at(-1)[0].toFixed(1)} ${(h-pad.b).toFixed(1)} L ${points[0][0].toFixed(1)} ${(h-pad.b).toFixed(1)} Z`;
-    const grid = [0.25,0.5,0.75].map(r => {
-        const y = pad.t + innerH * r;
+    const ticks = Array.from({ length: 100 / scaleStep + 1 }, (_, index) => 100 - index * scaleStep);
+    const grid = ticks.map(value => {
+        const y = pad.t + innerH * (1 - value / 100);
         return `<line class="chart-grid" x1="0" x2="${w}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"></line>`;
     }).join('');
-    el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">${grid}<path class="chart-area" d="${area}"></path><path class="chart-line" d="${line}"></path></svg>`;
+    const axis = ticks.map(value => `<span>${value}%</span>`).join('');
+    const timeLabels = [];
+    for (let seconds = windowSeconds; seconds > 0; seconds -= 60) {
+        timeLabels.push(`<span>${Math.floor(seconds / 60)}m ago</span>`);
+    }
+    timeLabels.push('<span>now</span>');
+    let paths = '';
+    if (points.length) {
+        const area = `${line} L ${points.at(-1)[0].toFixed(1)} ${(h-pad.b).toFixed(1)} L ${points[0][0].toFixed(1)} ${(h-pad.b).toFixed(1)} Z`;
+        paths = `<path class="chart-area" d="${area}"></path><path class="chart-line" d="${line}"></path>`;
+    }
+    const label = `${el.id.startsWith('cpu') ? 'CPU' : el.id.startsWith('ram') ? 'Memory' : 'Disk'} usage over the last ${windowSeconds / 60} minute${windowSeconds === 60 ? '' : 's'}`;
+    el.innerHTML = `<div class="chart-y-axis" aria-hidden="true">${axis}</div><div class="chart-plot"><svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="${label}">${grid}${paths}</svg>${points.length ? '' : '<div class="chart-empty">NO HISTORY AVAILABLE</div>'}</div><div class="chart-time-rail" aria-hidden="true">${timeLabels.join('')}</div>`;
 }
 
 function renderDiskRing(percent) {
@@ -2027,9 +2070,9 @@ function updateMetricCharts(system) {
     const cpu = metricNumber(system?.cpu_percent);
     const ram = metricNumber(system?.ram_percent);
     const disk = getDiskMetric(system);
-    pushMetric('cpu', cpu);
-    pushMetric('ram', ram);
-    pushMetric('disk', disk.percent);
+    pushMetric('cpu', cpu, 180);
+    pushMetric('ram', ram, 60);
+    pushMetric('disk', disk.percent, 60);
     renderMetricChart('cpu-chart', state.metrics.cpu);
     renderMetricChart('ram-chart', state.metrics.ram);
     renderMetricChart('disk-chart', state.metrics.disk);
@@ -2043,7 +2086,6 @@ function updateMetricCharts(system) {
 }
 
 async function refreshStatus() {
-    setConnectionState('busy');
     try {
         const { res, data } = await fetchJson('/api/status', { cache: 'no-store' }, 'Status unavailable');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -2054,10 +2096,9 @@ async function refreshStatus() {
         $('cpu-progress').style.width = `${Math.min(system.cpu_percent, 100)}%`;
         $('ram-val').textContent = `${system.ram_used_gb} GB`;
         $('ram-detail').textContent = `${system.ram_used_gb} / ${system.ram_total_gb} GB`;
-        const ramPercent = Math.max(0, Math.min(100, Number(system.ram_percent) || 0));
-        $('ram-progress').style.width = `${ramPercent}%`;
-        $('ram-percent').textContent = `${ramPercent.toFixed(1)}%`;
-        $('ram-meter').setAttribute('aria-valuenow', ramPercent.toFixed(1));
+        $('ram-available').textContent = Number.isFinite(system.ram_available_gb)
+            ? `${system.ram_available_gb.toFixed(2)} GB`
+            : 'Unavailable';
 
         const onlineBots = Number(fleet.online) || 0;
         const totalBots = Number(fleet.total) || 0;
@@ -2185,22 +2226,46 @@ async function refreshLogs() {
     const targetChanged = state.logs.target !== key;
     // While paused, only a target switch fetches (once) so the view never shows another bot's logs.
     if (state.tab !== 'logs' || (state.logs.paused && !targetChanged)) return;
+    const requestId = ++state.logs.requestId;
     state.logs.target = key;
     state.logs.health = 'busy';
     renderLogState();
     try {
         const data = await apiJson(`/api/logs/${encodeURIComponent(key)}?lines=200`, { cache: 'no-store' }, 'Unable to load logs');
+        if (requestId !== state.logs.requestId || selectedTarget().key !== key) return;
         state.logs.raw = data.logs || '';
         state.logs.health = 'connected';
         $('log-count').textContent = `${data.total_lines || 0} lines`;
         renderLogState();
     } catch (error) {
+        if (requestId !== state.logs.requestId || selectedTarget().key !== key) return;
         state.logs.raw = `Unable to load ${label} logs: ${error.message}`;
         state.logs.health = 'error';
         $('log-count').textContent = 'error';
         renderLogState(error.message);
     }
     renderLogs({ forceBottom: targetChanged });
+}
+
+async function clearSelectedLogs() {
+    const { key } = selectedTarget();
+    await withBusy($('clear-logs'), async () => {
+        try {
+            await apiJson(`/api/logs/${encodeURIComponent(key)}/clear`, { method: 'POST' }, 'Unable to clear logs');
+            if (selectedTarget().key === key) {
+                state.logs.requestId++;
+                state.logs.target = key;
+                state.logs.raw = '';
+                state.logs.health = 'connected';
+                $('log-count').textContent = '0 lines';
+                renderLogState();
+                renderLogs();
+            }
+            showToast('Logs cleared');
+        } catch (error) {
+            showToast(`Could not clear logs: ${error.message}`, 'error');
+        }
+    });
 }
 
 /** Pause is white (matches the PAUSED indicator); Resume is green. */
@@ -2940,6 +3005,64 @@ function renderModelList(filter) {
         : [h('div', { class: 'model-combo-empty', text: 'No matching models - your typed ID will be used as-is.' })]));
 }
 
+const PROVIDER_FIELD_SCROLL_SPEED = 24;
+const providerFieldScrollFrames = new WeakMap();
+
+function revealProviderFieldText(field) {
+    if (field instanceof HTMLSelectElement) {
+        field.title = field.selectedOptions[0]?.textContent?.trim() || '';
+        return;
+    }
+    const previousFrame = providerFieldScrollFrames.get(field);
+    if (previousFrame !== undefined) {
+        cancelAnimationFrame(previousFrame);
+        providerFieldScrollFrames.delete(field);
+    }
+    const maxScroll = field.scrollWidth - field.clientWidth;
+    if (maxScroll <= 0) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        field.scrollLeft = maxScroll;
+        return;
+    }
+
+    const startScroll = field.scrollLeft;
+    const distance = maxScroll - startScroll;
+    if (distance <= 0) return;
+    const duration = distance / PROVIDER_FIELD_SCROLL_SPEED * 1000;
+    let startTime = null;
+    const animate = timestamp => {
+        if (startTime === null) startTime = timestamp;
+        const progress = Math.min((timestamp - startTime) / duration, 1);
+        field.scrollLeft = startScroll + distance * progress;
+        if (progress < 1) providerFieldScrollFrames.set(field, requestAnimationFrame(animate));
+        else providerFieldScrollFrames.delete(field);
+    };
+    providerFieldScrollFrames.set(field, requestAnimationFrame(animate));
+}
+
+function resetProviderFieldText(field, force = false) {
+    if (!force && field.matches(':hover')) return;
+    const frame = providerFieldScrollFrames.get(field);
+    if (frame !== undefined) {
+        cancelAnimationFrame(frame);
+        providerFieldScrollFrames.delete(field);
+    }
+    const behavior = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth';
+    field.scrollTo({ left: 0, behavior });
+}
+
+function initProviderFieldMarquees() {
+    document.querySelectorAll('.assistant-settings-panel .field').forEach(field => {
+        const reveal = () => revealProviderFieldText(field);
+        const reset = () => resetProviderFieldText(field);
+        field.addEventListener('mouseenter', reveal);
+        field.addEventListener('focus', reveal);
+        field.addEventListener('mouseleave', () => resetProviderFieldText(field, true));
+        field.addEventListener('blur', reset);
+        if (field instanceof HTMLSelectElement) field.addEventListener('change', reveal);
+    });
+}
+
 function openModelList(filter) {
     if (!assistant.modelOptions.length) {
         closeModelList();
@@ -2947,16 +3070,22 @@ function openModelList(filter) {
     }
     renderModelList(filter);
     const list = $('assistant-model-list');
+    const combo = $('assistant-model-combo');
     list.hidden = false;
     list.classList.add('open');
+    combo.classList.add('open');
+    sidebar().classList.add('model-list-open');
     $('assistant-model').setAttribute('aria-expanded', 'true');
     list.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
 }
 
 function closeModelList() {
     const list = $('assistant-model-list');
+    const combo = $('assistant-model-combo');
     list.classList.remove('open');
     list.hidden = true;
+    combo.classList.remove('open');
+    sidebar().classList.remove('model-list-open');
     $('assistant-model').setAttribute('aria-expanded', 'false');
     assistant.modelActive = -1;
 }
@@ -3049,7 +3178,7 @@ async function saveProvider() {
 function renderMessages() {
     const box = $('assistant-messages');
     box.replaceChildren(...assistant.messages.map((message, index) => {
-        const messageElement = h('div', { class: `assistant-message ${message.role}` });
+        const messageElement = h('div', { class: `assistant-message ${message.role}`, dir: 'auto' });
         renderChatMessage(messageElement, message.content);
         const actions = h('div', { class: 'assistant-message-actions' },
             h('button', {
@@ -3426,6 +3555,7 @@ function bindEvents() {
     $('log-search').addEventListener('input', () => renderLogs());
     $('pause-logs').addEventListener('click', togglePauseLogs);
     $('copy-logs').addEventListener('click', () => copyText($('logs-content').textContent, 'Visible logs copied to clipboard!'));
+    $('clear-logs').addEventListener('click', clearSelectedLogs);
     $('toggle-env-mask').addEventListener('click', () => { state.env.masked = !state.env.masked; renderEnv(); });
     $('parent-dir-btn').addEventListener('click', () => { if (state.files.parent) loadFiles(state.files.parent); });
     $('file-search').addEventListener('input', queueFileSearch);
@@ -3450,6 +3580,7 @@ function bindEvents() {
     $('assistant-provider-select').addEventListener('change', onProviderChange);
     $('assistant-fetch-btn').addEventListener('click', fetchModels);
     $('assistant-save-btn').addEventListener('click', saveProvider);
+    initProviderFieldMarquees();
 
     // Assistant: model combobox
     const modelInput = $('assistant-model');
