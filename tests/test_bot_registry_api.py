@@ -122,6 +122,25 @@ class BotRegistryApiTests(unittest.TestCase):
         self.assertIn("margin:8px 0; padding-top:0; border-top:0;", page)
         self.assertIn("metrics: { cpu: [], ram: [], disk: [], maxPoints: 61 }", page)
 
+    def test_ssh_copy_button_is_centered_and_has_a_copy_icon(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn(
+            '<div class="section-kicker" id="ssh-title">SSH to the server</div>\n      <div class="utility">',
+            page,
+        )
+        self.assertIn("#ssh-title { margin-top:22px; margin-bottom:8px; }", page)
+        self.assertIn(
+            ".utility { display:grid; grid-template-columns:1fr auto; gap:1px; margin-top:0;",
+            page,
+        )
+        self.assertIn(".utility-copy-block { display:flex; align-items:center; }", page)
+        self.assertIn(
+            '<div class="utility-block utility-copy-block"><button class="btn btn-compact" id="copy-ssh-btn" type="button"><span data-lucide="copy"></span><span>Copy command</span></button></div>',
+            page,
+        )
+
     def test_clear_logs_truncates_only_the_selected_log_file(self):
         selected_log = self.root / "panel.log"
         other_log = self.root / "hermes.log"
@@ -396,6 +415,23 @@ class BotRegistryApiTests(unittest.TestCase):
             "expected the Terminal item in the Operations navigation",
         )
         self.assertTrue('<div hidden id="tab-terminal">' in page, "expected the Terminal panel")
+        self.assertIn('id="terminal-clear"', page)
+        self.assertIn('id="terminal-copy"', page)
+        self.assertIn('data-lucide="keyboard"', page)
+        self.assertIn('data-lucide="trash"', page)
+        self.assertIn('data-lucide="copy"', page)
+        self.assertIn("const TERMINAL_PROMPT = 'runner@runnervm48cm3:~$';", page)
+        self.assertIn("$('terminal-clear').addEventListener('click', clearTerminalHistory);", page)
+        self.assertIn("$('terminal-copy').addEventListener('click', copyTerminalContents);", page)
+        self.assertNotIn('id="terminal-connect"', page)
+        self.assertIn(".terminal-toolbar #terminal-interrupt { display:none; }", page)
+        mobile_styles = page.split("@media (max-width:760px)", 1)[1].split(
+            "@media (max-width:520px)", 1
+        )[0]
+        self.assertIn(
+            ".terminal-toolbar #terminal-interrupt { display:inline-flex; }",
+            mobile_styles,
+        )
         self.assertTrue(
             "const TAB_IDS = ['assistant', 'logs', 'env', 'files', 'terminal'];" in page,
             "expected terminal to be registered as a tab",

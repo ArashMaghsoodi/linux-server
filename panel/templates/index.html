@@ -35,7 +35,7 @@
   --radius-sm: 5px;
   --mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
   --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --sidebar: 232px;
+  --sidebar: 190px;
   --assistant-bottom-rail:64px;
 }
 * { box-sizing: border-box; }
@@ -146,7 +146,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .metric.primary .chart { flex:1; min-height:210px; height:auto; }
 .metric:not(.primary) { display:flex; flex-direction:column; }
 .metric:not(.primary) .chart { height:150px; margin-top:auto; }
-.chart-y-axis, .chart-time-rail { color:var(--chart-grid-color); font-family:var(--mono); font-size:11px; font-variant-numeric:tabular-nums; }
+.chart-y-axis, .chart-time-rail { color:var(--chart-rail-color); font-family:var(--mono); font-size:11px; font-variant-numeric:tabular-nums; }
 .chart-y-axis { display:flex; flex-direction:column; justify-content:space-between; line-height:1; text-align:center; }
 .chart-plot { position:relative; min-width:0; min-height:0; }
 .chart-plot svg { width:100%; height:100%; display:block; overflow:visible; }
@@ -166,10 +166,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .disk-copy .metric-number { font-size:25px; }
 
 /* utility strip */
-.utility { display:grid; grid-template-columns:1fr auto; gap:1px; margin-top:22px; background:var(--line); border:1px solid var(--line); }
+.utility { display:grid; grid-template-columns:1fr auto; gap:1px; margin-top:0; background:var(--line); border:1px solid var(--line); }
 .utility-block { background:var(--surface); padding:17px 17px; min-width:0; }
+.utility-copy-block { display:flex; align-items:center; }
 .utility-label { color:#657376; font-size:9px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; }
 .utility-value { margin-top:7px; color:#d7dddd; font-family:var(--mono); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#ssh-title { margin-top:22px; margin-bottom:8px; }
 
 /* Bots */
 .section { margin-top:36px; }
@@ -283,6 +285,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .log-state-dot, .model-status-dot { width:6px; height:6px; border-radius:50%; background:var(--status-color,#7a8688); box-shadow:0 0 0 2px var(--status-glow,rgba(122,134,136,.12)); animation:status-pulse 1.8s ease-in-out infinite; }
 .console-body { min-height:270px; }
 .terminal-toolbar { justify-content:flex-end; }
+.terminal-toolbar #terminal-interrupt { display:none; }
 .terminal-status { display:flex; align-items:center; gap:7px; margin-right:auto; color:var(--text-3); font-family:var(--mono); font-size:10px; }
 .terminal-status-dot { width:7px; height:7px; border-radius:50%; background:var(--text-3); }
 .terminal-status[data-state=connected] { color:var(--good); }
@@ -506,6 +509,7 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
   .console-toolbar { flex-wrap:wrap; }
   .log-search-wrap { flex-basis:100%; width:100%; }
   .terminal-output { height:min(55vh,420px); min-height:280px; }
+  .terminal-toolbar #terminal-interrupt { display:inline-flex; }
     .assistant-chat, .assistant-chat.sidebar-collapsed { grid-template-columns:1fr; }
   .assistant-model-fetch-row .model-combo { flex:1 1 auto; }
   .assistant-model-fetch-row #assistant-fetch-btn { flex:0 0 auto; }
@@ -647,9 +651,10 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
         </div>
       </section>
 
+      <div class="section-kicker" id="ssh-title">SSH to the server</div>
       <div class="utility">
         <div class="utility-block"><div class="utility-label">SSH access</div><div class="utility-value" id="ssh-val">—</div></div>
-        <div class="utility-block"><button class="btn btn-compact" id="copy-ssh-btn" type="button">Copy command</button></div>
+        <div class="utility-block utility-copy-block"><button class="btn btn-compact" id="copy-ssh-btn" type="button"><span data-lucide="copy"></span><span>Copy command</span></button></div>
         <span id="fleet-val" hidden>0 / 0</span><span id="fleet-online-pill" hidden></span><span id="fleet-offline-pill" hidden></span>
       </div>
 
@@ -738,8 +743,9 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
         <div hidden id="tab-terminal">
           <div class="console-toolbar terminal-toolbar">
             <div aria-live="polite" class="terminal-status" data-state="busy" id="terminal-status" role="status"><span aria-hidden="true" class="terminal-status-dot"></span><span id="terminal-status-text">Disconnected</span></div>
-            <button aria-label="Send Ctrl+C to the terminal" class="btn" id="terminal-interrupt" type="button">Ctrl+C</button>
-            <button class="btn" id="terminal-connect" type="button">Connect</button>
+            <button aria-label="Send Ctrl+C to the terminal" class="btn" id="terminal-interrupt" title="Send Ctrl+C to the terminal" type="button"><span data-lucide="keyboard"></span><span>Ctrl+C</span></button>
+            <button aria-label="Clear terminal output before the latest prompt" class="btn" id="terminal-clear" title="Clear terminal output before the latest prompt" type="button"><span data-lucide="trash"></span><span>Clear</span></button>
+            <button aria-label="Copy terminal contents" class="btn" id="terminal-copy" title="Copy terminal contents" type="button"><span data-lucide="copy"></span><span>Copy</span></button>
           </div>
           <div class="console-body terminal-body">
             <div aria-label="Interactive server terminal" class="terminal-output" id="terminal-output"></div>
@@ -837,6 +843,7 @@ const POLL_STATUS_MS = 3000;
 const POLL_LOGS_MS = 5000;
 const POLL_ASSISTANT_MS = 15000;
 const TAB_IDS = ['assistant', 'logs', 'env', 'files', 'terminal'];
+const TERMINAL_PROMPT = 'runner@runnervm48cm3:~$';
 const DEFAULT_CHAT_TITLE = 'New chat';
 const MOBILE_QUERY = window.matchMedia('(max-width: 760px)');
 
@@ -869,6 +876,7 @@ const ICON_PATHS = {
     funnel: '<path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.74 1.67l7.225 7.99A2 2 0 0 1 10 14z"/>',
     folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
     gamepad: '<path d="M6 12h4m-2-2v4"/><path d="M14 13h.01M18 11h.01"/><path d="M6.5 7h11a4.5 4.5 0 0 1 4.4 5.4l-1 4.5a2.5 2.5 0 0 1-4.1 1.3l-2.1-1.8h-5.4l-2.1 1.8a2.5 2.5 0 0 1-4.1-1.3l-1-4.5A4.5 4.5 0 0 1 6.5 7Z"/>',
+    keyboard: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 15h8"/>',
     logOut: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
     messageCircle: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
     palette: '<path d="M12 22a10 10 0 1 1 10-10c0 1.7-1.3 3-3 3h-1.8c-.8 0-1.2.9-.7 1.5l.3.4c1 1.3.1 3.1-1.5 3.1Z"/><path d="M7.5 10h.01M12 7.5h.01M16.5 10h.01"/>',
@@ -2277,8 +2285,6 @@ function reloadActiveTab() {
 function setTerminalStatus(stateName, label) {
     $('terminal-status').dataset.state = stateName;
     $('terminal-status-text').textContent = label;
-    $('terminal-connect').textContent = stateName === 'connected' ? 'Disconnect' : 'Connect';
-    $('terminal-connect').disabled = stateName === 'busy';
 }
 
 function showTerminalError(message) {
@@ -2296,6 +2302,64 @@ function fitTerminal() {
     if (!$('tab-terminal').hidden && state.terminal.fitAddon) {
         state.terminal.fitAddon.fit();
     }
+}
+
+function getTerminalBufferText(buffer) {
+    const lines = [];
+    for (let index = 0; index < buffer.length; index += 1) {
+        lines.push(buffer.getLine(index)?.translateToString(true) || '');
+    }
+    return lines.join('\n');
+}
+
+function clearTerminalHistory() {
+    const terminal = state.terminal.instance;
+    if (!terminal) {
+        showToast('The terminal is not available yet.', 'error');
+        return;
+    }
+    const buffer = terminal.buffer.active;
+    const cursorLine = Math.min(buffer.baseY + buffer.cursorY, buffer.length - 1);
+    const lines = [];
+    for (let index = 0; index <= cursorLine; index += 1) {
+        const line = buffer.getLine(index);
+        lines.push({
+            text: line?.translateToString(true) || '',
+            isWrapped: Boolean(line?.isWrapped),
+        });
+    }
+    let promptLine = -1;
+    let promptColumn = -1;
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+        const column = lines[index].text.lastIndexOf(TERMINAL_PROMPT);
+        if (column !== -1) {
+            promptLine = index;
+            promptColumn = column;
+            break;
+        }
+    }
+    if (promptLine === -1) {
+        showToast('Could not find the latest terminal prompt.', 'error');
+        return;
+    }
+    const retainedLines = lines.slice(promptLine);
+    retainedLines[0].text = retainedLines[0].text.slice(promptColumn);
+    let retainedText = retainedLines[0].text;
+    for (let index = 1; index < retainedLines.length; index += 1) {
+        retainedText += `${retainedLines[index].isWrapped ? '' : '\r\n'}${retainedLines[index].text}`;
+    }
+    terminal.clear();
+    terminal.write(`\x1b[H${retainedText}`);
+}
+
+function copyTerminalContents() {
+    const terminal = state.terminal.instance;
+    if (!terminal) {
+        showToast('The terminal is not available yet.', 'error');
+        return;
+    }
+    const text = terminal.getSelection() || getTerminalBufferText(terminal.buffer.active);
+    void copyText(text, 'Terminal contents copied to clipboard!');
 }
 
 async function connectTerminal() {
@@ -3764,11 +3828,8 @@ function bindEvents() {
     $('toggle-env-mask').addEventListener('click', () => { state.env.masked = !state.env.masked; renderEnv(); });
     $('parent-dir-btn').addEventListener('click', () => { if (state.files.parent) loadFiles(state.files.parent); });
     $('file-search').addEventListener('input', queueFileSearch);
-    $('terminal-connect').addEventListener('click', () => {
-        const socket = state.terminal.socket;
-        if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
-        else void connectTerminal();
-    });
+    $('terminal-clear').addEventListener('click', clearTerminalHistory);
+    $('terminal-copy').addEventListener('click', copyTerminalContents);
     $('terminal-interrupt').addEventListener('click', () => {
         sendTerminalMessage({ type: 'input', data: '\x03' });
         state.terminal.instance?.focus();
