@@ -188,7 +188,7 @@ cd "$PANEL_DIR"
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-pip install flask psutil requests pyyaml cryptography
+pip install flask psutil requests pyyaml cryptography flask-sock==0.7.0 simple-websocket==1.1.0
 deactivate
 
 echo

@@ -653,11 +653,14 @@ def login_required(f):
 try:
     from .assistant import create_assistant_blueprint
     from .assistant_settings import PROVIDERS as SETTINGS_PROVIDERS
+    from .terminal import close_terminal_session, register_terminal_routes
 except ImportError:
     from assistant import create_assistant_blueprint
     from assistant_settings import PROVIDERS as SETTINGS_PROVIDERS
+    from terminal import close_terminal_session, register_terminal_routes
 
 app.register_blueprint(create_assistant_blueprint(login_required, restart_hermes))
+register_terminal_routes(app, login_required)
 
 
 def get_bot_proc(bot_key):
@@ -1003,6 +1006,7 @@ def login():
 
 @app.route("/logout")
 def logout():
+    close_terminal_session(session.get("terminal_session_id"))
     session.clear()
     return redirect(url_for("login"))
 

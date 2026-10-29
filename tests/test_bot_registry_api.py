@@ -1,5 +1,9 @@
+import os
+import select
 import sys
+import threading
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,6 +15,17 @@ PANEL_DIR = Path(__file__).resolve().parents[1] / "panel"
 sys.path.insert(0, str(PANEL_DIR))
 import app as panel_app
 from bot_registry import empty_registry, save_registry, set_bot_credentials
+import terminal as terminal_module
+from terminal import (
+    consume_terminal_token,
+    close_terminal_session,
+    issue_terminal_token,
+    is_same_origin,
+    parse_terminal_message,
+    _start_shell,
+    _stop_shell,
+    _write_terminal_input,
+)
 
 
 class BotRegistryApiTests(unittest.TestCase):
@@ -370,6 +385,102 @@ class BotRegistryApiTests(unittest.TestCase):
 
         self.assertIn("$('providers-btn').addEventListener('click', () => {", sidebar_handlers)
         self.assertIn("setProviderPanelOpen(!sidebar().classList.contains('settings-open'));", sidebar_handlers)
+
+    def test_terminal_is_the_fifth_operations_tab(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertTrue(
+            '<button class="tab-btn" data-tab="terminal" type="button"><span class="tab-icon">05</span><span class="tab-span">Terminal</span></button>'
+            in page,
+            "expected the Terminal item in the Operations navigation",
+        )
+        self.assertTrue('<div hidden id="tab-terminal">' in page, "expected the Terminal panel")
+        self.assertTrue(
+            "const TAB_IDS = ['assistant', 'logs', 'env', 'files', 'terminal'];" in page,
+            "expected terminal to be registered as a tab",
+        )
+        self.assertIn(
+            "if (data.supported === false) throw new Error('Interactive terminals require a Linux host.');",
+            page,
+        )
+
+    def test_terminal_token_is_only_available_to_authenticated_sessions(self):
+        response = self.client.get("/api/terminal/token")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json["token"])
+        self.assertEqual(response.json["supported"], os.name == "posix")
+
+        unauthenticated_client = panel_app.app.test_client()
+        response = unauthenticated_client.get("/api/terminal/token")
+        self.assertEqual(response.status_code, 401)
+
+    def test_terminal_tokens_are_session_bound_and_single_use(self):
+        token = issue_terminal_token("browser-session")
+
+        self.assertFalse(consume_terminal_token(token, "different-session"))
+        self.assertTrue(consume_terminal_token(token, "browser-session"))
+        self.assertFalse(consume_terminal_token(token, "browser-session"))
+
+    def test_logging_out_stops_the_active_terminal_session(self):
+        terminal_session_id = "logout-session"
+        stop_event = threading.Event()
+        with patch.dict(
+            terminal_module._active_terminal_sessions,
+            {terminal_session_id: stop_event},
+            clear=True,
+        ):
+            with self.client.session_transaction() as session:
+                session["terminal_session_id"] = terminal_session_id
+
+            response = self.client.get("/logout")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(stop_event.is_set())
+
+    def test_terminal_websocket_requires_a_same_origin(self):
+        self.assertTrue(is_same_origin("https://panel.example", "panel.example"))
+        self.assertFalse(is_same_origin("https://attacker.example", "panel.example"))
+        self.assertFalse(is_same_origin("null", "panel.example"))
+        self.assertFalse(is_same_origin("https://panel.example/path", "panel.example"))
+
+    def test_terminal_protocol_accepts_input_and_bounded_dimensions(self):
+        self.assertEqual(
+            parse_terminal_message('{"type":"input","data":"ls\\r"}'),
+            ("input", "ls\r"),
+        )
+        self.assertEqual(
+            parse_terminal_message('{"type":"resize","cols":240,"rows":100}'),
+            ("resize", 200, 80),
+        )
+
+    def test_terminal_protocol_rejects_malformed_or_oversized_input(self):
+        for message in (
+            "not json",
+            '{"type":"input","data":7}',
+            '{"type":"resize","cols":true,"rows":24}',
+            "x" * 65537,
+        ):
+            with self.subTest(message=message[:24]):
+                with self.assertRaises(ValueError):
+                    parse_terminal_message(message)
+
+    @unittest.skipUnless(os.name == "posix", "interactive PTY requires a POSIX host")
+    def test_terminal_pty_runs_input_and_returns_shell_output(self):
+        pid, master_fd = _start_shell()
+        stopped = threading.Event()
+        try:
+            _write_terminal_input(master_fd, "printf '\\n__panel_terminal_smoke__\\n'\n")
+            output = bytearray()
+            deadline = time.monotonic() + 3
+            while b"__panel_terminal_smoke__" not in output and time.monotonic() < deadline:
+                readable, _, _ = select.select([master_fd], [], [], 0.1)
+                if readable:
+                    output.extend(os.read(master_fd, 4096))
+
+            self.assertIn(b"__panel_terminal_smoke__", output)
+        finally:
+            _stop_shell(pid, master_fd, stopped)
 
     def test_fetched_model_list_escapes_provider_settings_clipping(self):
         response = self.client.get("/")

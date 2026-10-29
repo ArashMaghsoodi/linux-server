@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css" integrity="sha384-8Xk9wy/gzEDUKrXtrmCFa2bBuK3BpjpDuL/p0SeKQX19Khl/M+lHOgD/CyYf7efP" crossorigin="anonymous">
 <style>
 :root {
   --bg: #0b0e10;
@@ -281,6 +282,18 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .log-state { display:flex; align-items:center; gap:6px; color:#738083; font-family:var(--mono); font-size:9px; }
 .log-state-dot, .model-status-dot { width:6px; height:6px; border-radius:50%; background:var(--status-color,#7a8688); box-shadow:0 0 0 2px var(--status-glow,rgba(122,134,136,.12)); animation:status-pulse 1.8s ease-in-out infinite; }
 .console-body { min-height:270px; }
+.terminal-toolbar { justify-content:flex-end; }
+.terminal-status { display:flex; align-items:center; gap:7px; margin-right:auto; color:var(--text-3); font-family:var(--mono); font-size:10px; }
+.terminal-status-dot { width:7px; height:7px; border-radius:50%; background:var(--text-3); }
+.terminal-status[data-state=connected] { color:var(--good); }
+.terminal-status[data-state=connected] .terminal-status-dot { background:var(--good); box-shadow:0 0 0 3px rgba(120,201,157,.14); }
+.terminal-status[data-state=error] { color:var(--bad); }
+.terminal-status[data-state=error] .terminal-status-dot { background:var(--bad); }
+.terminal-body { padding:12px; background:#0a0e10; }
+.terminal-output { height:420px; overflow:hidden; background:#0a0e10; }
+.terminal-output .xterm { height:100%; padding:3px; }
+.terminal-output .xterm-viewport { overflow-y:auto !important; }
+.terminal-error { margin-top:8px; color:var(--bad); font-size:11px; }
 .logs-box { min-height:270px; max-height:460px; overflow:auto; padding:15px; background:#0a0e10; color:#9da9aa; font-family:var(--mono); font-size:10px; line-height:1.65; white-space:pre-wrap; overflow-wrap:anywhere; }
 .env-table-wrapper { overflow:auto; }
 .env-table { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:10px; }
@@ -492,6 +505,7 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
   .console-right { width:100%; flex-basis:auto; }
   .console-toolbar { flex-wrap:wrap; }
   .log-search-wrap { flex-basis:100%; width:100%; }
+  .terminal-output { height:min(55vh,420px); min-height:280px; }
     .assistant-chat, .assistant-chat.sidebar-collapsed { grid-template-columns:1fr; }
   .assistant-model-fetch-row .model-combo { flex:1 1 auto; }
   .assistant-model-fetch-row #assistant-fetch-btn { flex:0 0 auto; }
@@ -573,6 +587,7 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
       <button class="tab-btn" data-tab="env" type="button"><span class="tab-icon">02</span><span class="tab-span">Environment</span></button>
       <button class="tab-btn" data-tab="files" type="button"><span class="tab-icon">03</span><span class="tab-span">Files</span></button>
       <button class="tab-btn" data-tab="assistant" type="button"><span class="tab-icon">04</span><span class="tab-span">Assistant</span></button>
+      <button class="tab-btn" data-tab="terminal" type="button"><span class="tab-icon">05</span><span class="tab-span">Terminal</span></button>
     </nav>
     <div class="rail-spacer"></div>
     <div class="host-mini">
@@ -671,6 +686,7 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
             <button class="tab-btn" data-tab="env" type="button"><span class="tab-icon">02</span><span class="tab-span">Environment</span></button>
             <button class="tab-btn" data-tab="files" type="button"><span class="tab-icon">03</span><span class="tab-span">Files</span></button>
             <button class="tab-btn" data-tab="assistant" type="button"><span class="tab-icon">04</span><span class="tab-span">Assistant</span></button>
+            <button class="tab-btn" data-tab="terminal" type="button"><span class="tab-icon">05</span><span class="tab-span">Terminal</span></button>
           </div>
           <div class="console-right" id="bot-select-wrapper"><select class="bot-select field" id="bot-select"><option value="panel">Management Panel</option><option value="hermes">Hermes Gateway</option><option value="status-bot">Status Bot</option></select></div>
         </div>
@@ -716,6 +732,18 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
                 <div class="assistant-composer"><div class="assistant-input-wrap"><textarea aria-label="Message Hermes" class="assistant-input field" dir="auto" id="assistant-input" placeholder="Ask Hermes to inspect or manage the server…" rows="2"></textarea><button aria-label="Send message" class="btn btn-start assistant-send" id="assistant-send" title="Send message" type="button"><span data-lucide="sendHorizontal"></span></button></div></div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div hidden id="tab-terminal">
+          <div class="console-toolbar terminal-toolbar">
+            <div aria-live="polite" class="terminal-status" data-state="busy" id="terminal-status" role="status"><span aria-hidden="true" class="terminal-status-dot"></span><span id="terminal-status-text">Disconnected</span></div>
+            <button aria-label="Send Ctrl+C to the terminal" class="btn" id="terminal-interrupt" type="button">Ctrl+C</button>
+            <button class="btn" id="terminal-connect" type="button">Connect</button>
+          </div>
+          <div class="console-body terminal-body">
+            <div aria-label="Interactive server terminal" class="terminal-output" id="terminal-output"></div>
+            <div class="terminal-error" hidden id="terminal-error" role="alert"></div>
           </div>
         </div>
       </section>
@@ -789,6 +817,8 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
 </div>
 </form>
 </dialog>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js" integrity="sha384-M169f14mRZOXm3hD/v2Ti0ThIT/RnAQagXA9nlE15yHAtrW19gdePJh/HaTzUOe/" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js" integrity="sha384-iF+jqbuti4XlB64clWgFWYEscb+UnSRv3VgVikGYZu+otNFnSHr7y7NcKfBnGizn" crossorigin="anonymous"></script>
 <script>
 
 (() => {
@@ -806,7 +836,7 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
 const POLL_STATUS_MS = 3000;
 const POLL_LOGS_MS = 5000;
 const POLL_ASSISTANT_MS = 15000;
-const TAB_IDS = ['assistant', 'logs', 'env', 'files'];
+const TAB_IDS = ['assistant', 'logs', 'env', 'files', 'terminal'];
 const DEFAULT_CHAT_TITLE = 'New chat';
 const MOBILE_QUERY = window.matchMedia('(max-width: 760px)');
 
@@ -918,6 +948,7 @@ const state = {
     metrics: { cpu: [], ram: [], disk: [], maxPoints: 61 },   // health: connecting | live | error
     env: { data: {}, masked: true, notice: '' },
     files: { path: '', parent: null, query: '', searchTimer: null, searchRequestId: 0, pendingDelete: null, previews: [], activePreviewPath: '', previewRequestId: 0 },
+    terminal: { instance: null, fitAddon: null, socket: null, connecting: false },
     assistant: {
         messages: [],
         abort: null,
@@ -2205,7 +2236,7 @@ function switchTab(tab) {
     syncBotSelectOptions();
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
     TAB_IDS.forEach(id => { $(`tab-${id}`).hidden = id !== tab; });
-    $('bot-select-wrapper').hidden = tab === 'files' || tab === 'assistant';
+    $('bot-select-wrapper').hidden = tab === 'files' || tab === 'assistant' || tab === 'terminal';
     reloadActiveTab();
 }
 
@@ -2240,6 +2271,138 @@ function reloadActiveTab() {
     else if (state.tab === 'env') refreshEnv();
     else if (state.tab === 'files') loadFiles();
     else if (state.tab === 'assistant') openAssistantTab();
+    else if (state.tab === 'terminal') openTerminalTab();
+}
+
+function setTerminalStatus(stateName, label) {
+    $('terminal-status').dataset.state = stateName;
+    $('terminal-status-text').textContent = label;
+    $('terminal-connect').textContent = stateName === 'connected' ? 'Disconnect' : 'Connect';
+    $('terminal-connect').disabled = stateName === 'busy';
+}
+
+function showTerminalError(message) {
+    const error = $('terminal-error');
+    error.textContent = message;
+    error.hidden = false;
+}
+
+function sendTerminalMessage(message) {
+    const socket = state.terminal.socket;
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+}
+
+function fitTerminal() {
+    if (!$('tab-terminal').hidden && state.terminal.fitAddon) {
+        state.terminal.fitAddon.fit();
+    }
+}
+
+async function connectTerminal() {
+    if (state.terminal.connecting || (
+        state.terminal.socket && state.terminal.socket.readyState !== WebSocket.CLOSED
+    )) return;
+    if (typeof window.Terminal !== 'function' || typeof window.FitAddon?.FitAddon !== 'function') {
+        setTerminalStatus('error', 'Unavailable');
+        showTerminalError('The terminal interface could not be loaded. Check the browser connection and try again.');
+        return;
+    }
+
+    state.terminal.connecting = true;
+    setTerminalStatus('busy', 'Connecting…');
+    $('terminal-error').hidden = true;
+    try {
+        const data = await apiJson('/api/terminal/token', undefined, 'Could not authorize terminal');
+        if (data.supported === false) throw new Error('Interactive terminals require a Linux host.');
+        if (typeof data.token !== 'string' || !data.token) throw new Error('Could not authorize terminal.');
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const socket = new WebSocket(`${protocol}//${window.location.host}/api/terminal/socket`);
+        state.terminal.socket = socket;
+        socket.addEventListener('open', () => {
+            socket.send(JSON.stringify({ type: 'auth', token: data.token }));
+        });
+        socket.addEventListener('message', event => {
+            let message;
+            try {
+                message = JSON.parse(event.data);
+            } catch {
+                showTerminalError('The terminal returned an invalid response.');
+                socket.close();
+                return;
+            }
+            if (message.type === 'ready') {
+                state.terminal.connecting = false;
+                setTerminalStatus('connected', 'Connected');
+                fitTerminal();
+                sendTerminalMessage({
+                    type: 'resize',
+                    cols: state.terminal.instance.cols,
+                    rows: state.terminal.instance.rows,
+                });
+            } else if (message.type === 'output' && typeof message.data === 'string') {
+                state.terminal.instance.write(message.data);
+            } else if (message.type === 'error' && typeof message.message === 'string') {
+                state.terminal.connecting = false;
+                setTerminalStatus('error', 'Unavailable');
+                showTerminalError(message.message);
+            } else if (message.type === 'exit') {
+                state.terminal.instance.writeln(`\r\n[Shell exited with code ${message.code}]`);
+                setTerminalStatus('busy', 'Disconnected');
+                socket.close();
+            }
+        });
+        socket.addEventListener('error', () => {
+            state.terminal.connecting = false;
+            if ($('terminal-status').dataset.state === 'error') return;
+            setTerminalStatus('error', 'Connection failed');
+            showTerminalError('Could not connect to the server terminal.');
+        });
+        socket.addEventListener('close', () => {
+            state.terminal.connecting = false;
+            if (state.terminal.socket === socket) state.terminal.socket = null;
+            if ($('terminal-status').dataset.state !== 'error') {
+                setTerminalStatus('idle', 'Disconnected');
+            }
+        });
+    } catch (error) {
+        state.terminal.connecting = false;
+        setTerminalStatus('error', 'Connection failed');
+        showTerminalError(error.message);
+    }
+}
+
+function openTerminalTab() {
+    if (!state.terminal.instance && typeof window.Terminal === 'function' && typeof window.FitAddon?.FitAddon === 'function') {
+        const terminal = new window.Terminal({
+            cursorBlink: true,
+            fontFamily: 'Cascadia Code, SFMono-Regular, Consolas, monospace',
+            fontSize: 12,
+            scrollback: 2000,
+            theme: {
+                background: '#0a0e10',
+                foreground: '#d2dbdc',
+                cursor: '#73d0d2',
+                selectionBackground: '#285056',
+            },
+        });
+        const fitAddon = new window.FitAddon.FitAddon();
+        terminal.loadAddon(fitAddon);
+        terminal.open($('terminal-output'));
+        terminal.focus();
+        terminal.onData(data => sendTerminalMessage({ type: 'input', data }));
+        terminal.onResize(({ cols, rows }) => sendTerminalMessage({ type: 'resize', cols, rows }));
+        state.terminal.instance = terminal;
+        state.terminal.fitAddon = fitAddon;
+        window.addEventListener('resize', fitTerminal);
+    }
+    if (!state.terminal.instance) {
+        setTerminalStatus('error', 'Unavailable');
+        showTerminalError('The terminal interface could not be loaded. Check the browser connection and try again.');
+        return;
+    }
+    fitTerminal();
+    if (state.terminal.socket?.readyState === WebSocket.OPEN) return;
+    void connectTerminal();
 }
 
 /* Logs */
@@ -3601,6 +3764,15 @@ function bindEvents() {
     $('toggle-env-mask').addEventListener('click', () => { state.env.masked = !state.env.masked; renderEnv(); });
     $('parent-dir-btn').addEventListener('click', () => { if (state.files.parent) loadFiles(state.files.parent); });
     $('file-search').addEventListener('input', queueFileSearch);
+    $('terminal-connect').addEventListener('click', () => {
+        const socket = state.terminal.socket;
+        if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
+        else void connectTerminal();
+    });
+    $('terminal-interrupt').addEventListener('click', () => {
+        sendTerminalMessage({ type: 'input', data: '\x03' });
+        state.terminal.instance?.focus();
+    });
 
     // Assistant: sidebar
     $('sidebar-toggle-btn').addEventListener('click', toggleSidebar);

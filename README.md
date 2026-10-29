@@ -64,7 +64,9 @@ If the workflow fails, open its run and inspect the failing step and uploaded lo
 
 ### Web control panel
 
-The panel is the main interface. It provides server status, bot management, logs, environment-variable viewing, file browsing and previews, and Hermes Assistant. The panel login is password-only; use the `SERVER_PASSWORD` you configured.
+The panel is the main interface. It provides server status, bot management, logs, environment-variable viewing, file browsing and previews, Hermes Assistant, and an interactive terminal. The panel login is password-only; use the `SERVER_PASSWORD` you configured.
+
+The **Terminal** operation opens a shell as the same operating-system user that runs the panel. Anyone who can sign in to the panel can run commands with that account's permissions. Treat the panel password and tunnel access as privileged server access.
 
 To add a bot, open the bot-management area and provide:
 
@@ -118,6 +120,7 @@ While connected, open `http://localhost:20129/dashboard`. The dashboard password
 .github/workflows/server.yml   GitHub Actions deployment and lifecycle
 scripts/                        Runner setup, startup, heartbeat, and shutdown
 panel/app.py                    Flask API and process controls
+panel/terminal.py               Authenticated interactive terminal
 panel/templates/                Web control panel and login
 panel/run_hermes_gateway.sh      Hermes gateway supervisor
 hermes/SOUL.md                  Hermes operator context
