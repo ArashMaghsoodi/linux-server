@@ -166,13 +166,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 /* utility strip */
 .utility { display:grid; grid-template-columns:1fr auto; gap:1px; margin-top:22px; background:var(--line); border:1px solid var(--line); }
-.utility-block { background:var(--surface); padding:14px 17px; min-width:0; }
+.utility-block { background:var(--surface); padding:17px 17px; min-width:0; }
 .utility-label { color:#657376; font-size:9px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; }
 .utility-value { margin-top:7px; color:#d7dddd; font-family:var(--mono); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
 /* Bots */
 .section { margin-top:36px; }
 .section-header { display:flex; align-items:flex-end; justify-content:space-between; gap:20px; margin-bottom:12px; }
+.section-header #toggle-add-bot { flex:0 0 auto; width:max-content; white-space:nowrap; }
 .section-title { font-size:17px; font-weight:650; letter-spacing:-.02em; }
 .section-description { margin-top:4px; color:#667477; font-size:11px; }
 .bot-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:1px; background:var(--bg); }
@@ -298,6 +299,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .file-search-wrap { position:relative; flex:1; min-width:160px; }
 .file-search-wrap .field { width:100%; padding-left:32px; }
 .file-search-icon { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#728084; pointer-events:none; }
+.file-parent-mobile-label { display:none; }
 .file-item-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#bac4c5; font-family:var(--mono); font-size:10px; }
 .file-item-path { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#718083; font-family:var(--mono); font-size:9px; }
 .file-item-end { display:flex; align-items:center; gap:10px; }
@@ -361,6 +363,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .assistant-sidebar.model-list-open .assistant-settings-panel { overflow:visible; }
 .assistant-settings-title { color:#718083; font-size:9px; font-weight:700; letter-spacing:.13em; text-transform:uppercase; margin-bottom:9px; }
 .assistant-settings-row { display:flex; gap:5px; margin-bottom:6px; }
+.assistant-model-fetch-row .model-combo { flex:1; min-width:0; }
 .assistant-settings-actions { display:flex; gap:5px; margin-top:7px; }
 .assistant-sidebar-footer { margin-top:auto; flex:0 0 var(--assistant-bottom-rail); display:flex; align-items:center; padding:10px; border-top:1px solid var(--line); }
 .assistant-rail-btn { display:none; }
@@ -490,6 +493,8 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
   .console-toolbar { flex-wrap:wrap; }
   .log-search-wrap { flex-basis:100%; width:100%; }
     .assistant-chat, .assistant-chat.sidebar-collapsed { grid-template-columns:1fr; }
+  .assistant-model-fetch-row .model-combo { flex:1 1 auto; }
+  .assistant-model-fetch-row #assistant-fetch-btn { flex:0 0 auto; }
   .assistant-sidebar { position:absolute; inset:0 auto 0 0; width:min(86%,320px); z-index:20; transform:translateX(-105%); transition:transform .2s ease; box-shadow:20px 0 50px rgba(0,0,0,.4); }
   .assistant-chat.drawer-open .assistant-sidebar { transform:translateX(0); }
   .assistant-chat.drawer-open .assistant-sidebar-backdrop { display:block; position:absolute; inset:0; z-index:19; background:rgba(0,0,0,.5); }
@@ -497,9 +502,45 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
   .assistant-sidebar.collapsed { transform:translateX(-105%); }
 }
 @media (max-width:520px) {
-  .top-actions .btn { display:none; }
+  .top-actions .btn { display:inline-flex; width:32px; min-width:32px; padding:6px; gap:0; }
+  .top-actions .btn > span:last-child { display:none; }
+  .console-toolbar #log-count { display:none; }
+  .console-toolbar #log-state-text {
+    position:absolute;
+    width:1px;
+    height:1px;
+    padding:0;
+    margin:-1px;
+    overflow:hidden;
+    clip:rect(0,0,0,0);
+    white-space:nowrap;
+    border:0;
+  }
+  .file-toolbar {
+    display:grid;
+    grid-template-columns:auto minmax(0,1fr);
+    align-items:center;
+  }
+  .file-toolbar #current-file-path {
+    grid-column:1 / -1;
+    width:100%;
+    min-width:0 !important;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .file-toolbar #parent-dir-btn {
+    min-width:0 !important;
+    min-height:36px;
+    white-space:nowrap;
+  }
+  .file-parent-mobile-label { display:inline; }
+  .file-parent-desktop-label { display:none; }
+  .file-toolbar .file-search-wrap { width:100%; min-width:0; }
   .hero h1 { font-size:25px; }
   .bot-grid { grid-template-columns:1fr; }
+  .bot-stats { grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,2fr); }
+  .bot-stat { min-width:0; }
   .bot-actions { grid-template-columns:repeat(2,1fr); }
     .bot-icon-dialog { padding:16px; }
     .bot-icon-picker { gap:6px; }
@@ -545,8 +586,8 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
     <header class="topbar">
       <div class="crumb"><span class="crumb-title">Control room</span><span class="crumb-meta">/ github-runner / production</span></div>
       <div class="top-actions">
-        <button class="btn btn-restart" id="redeploy-btn" type="button"><span data-lucide="rotateCw"></span><span>Redeploy</span></button>
-        <a href="/logout" class="btn btn-delete"><span data-lucide="logOut"></span><span>Logout</span></a>
+        <button aria-label="Redeploy server" class="btn btn-restart" id="redeploy-btn" type="button"><span data-lucide="rotateCw"></span><span>Redeploy</span></button>
+        <a aria-label="Log out" href="/logout" class="btn btn-delete"><span data-lucide="logOut"></span><span>Logout</span></a>
         <div aria-live="polite" class="connection" data-state="busy" id="connection-pill"><span class="dot" id="connection-dot"></span><span id="connection-status">BUSY</span></div>
       </div>
     </header>
@@ -646,13 +687,13 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
 
         <div hidden id="tab-files">
           <div class="console-toolbar file-toolbar">
-            <span class="log-meta" style="min-width: fit-content;" id="current-file-path">
+            <span class="log-meta" id="current-file-path">
                 Path: /home/runner/bot-server
             </span>
-            <button class="btn" style="min-width: fit-content;" id="parent-dir-btn" type="button">
-                <span data-lucide="arrowUp"></span><span>Parent directory</span>
+            <button aria-label="Go to parent directory" class="btn" id="parent-dir-btn" type="button">
+                <span data-lucide="arrowUp"></span><span class="file-parent-desktop-label">Parent directory</span><span class="file-parent-mobile-label">Up</span>
             </button>
-            <div class="file-search-wrap"><span aria-hidden="true" class="file-search-icon" data-lucide="search"></span><input aria-label="Search files and folders below this directory" autocomplete="off" class="field" id="file-search" placeholder="Search files and folders below this directory" type="search"></div>
+            <div class="file-search-wrap"><span aria-hidden="true" class="file-search-icon" data-lucide="search"></span><input aria-label="Search files and folders below this directory" autocomplete="off" class="field" id="file-search" placeholder="Search files…" type="search"></div>
         </div>
           <div class="console-body"><div class="file-list" id="file-entries"></div><div aria-label="File preview" class="file-preview" hidden id="file-preview-box"><div role="tablist" aria-label="Open files" id="file-preview-tabs" class="file-preview-tabs"></div><div class="file-preview-body"><pre aria-hidden="true" class="file-preview-lines" id="file-preview-lines"></pre><pre aria-label="File contents" class="file-preview-content" id="file-preview-content"></pre></div></div></div>
         </div>
@@ -664,7 +705,7 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
                 <div class="assistant-sidebar-header"><div class="assistant-sidebar-title">Sessions</div><div class="assistant-sidebar-actions"><button aria-label="New chat" class="assistant-sidebar-toggle assistant-new-chat" id="new-chat-btn" title="New chat" type="button"><span data-lucide="plus"></span></button><button aria-label="Collapse sidebar" class="assistant-sidebar-toggle" id="sidebar-toggle-btn" title="Collapse sidebar" type="button"><span data-lucide="chevronLeft"></span></button></div></div>
                 <div class="assistant-session-list" id="assistant-session-list"><div class="assistant-session-empty">No sessions loaded</div></div>
                 <div class="assistant-sidebar-divider"></div>
-                <div class="assistant-settings-panel"><div class="assistant-settings-title">Provider settings</div><div class="assistant-settings-row"><div class="provider-select-wrap"><select aria-label="Provider" class="field" id="assistant-provider-select"></select><span aria-hidden="true" class="provider-select-chevron"><span data-lucide="chevronDown"></span></span></div></div><div class="assistant-settings-row" hidden id="assistant-base-url-row"><input aria-label="Base URL" class="field" id="assistant-base-url" placeholder="Base URL" type="url"></div><div class="assistant-settings-row"><input aria-label="API key" autocomplete="off" class="field" id="assistant-api-key" placeholder="API key or token" type="password"></div><div class="assistant-settings-row"><div class="model-combo" id="assistant-model-combo"><input aria-autocomplete="list" aria-controls="assistant-model-list" aria-expanded="false" autocomplete="off" class="field" id="assistant-model" placeholder="Model ID" role="combobox" spellcheck="false" type="text"><button aria-label="Show fetched models" class="model-combo-toggle" hidden id="assistant-model-toggle" tabindex="-1" type="button"><span data-lucide="chevronDown"></span></button><div class="model-combo-list" hidden id="assistant-model-list" role="listbox"></div></div><button class="btn" id="assistant-fetch-btn" type="button">Fetch</button></div><div class="assistant-settings-actions"><button class="btn btn-start btn-grow" id="assistant-save-btn" type="button">Save &amp; restart</button><button class="btn" id="assistant-cancel-btn" type="button">Cancel</button></div>
+                <div class="assistant-settings-panel"><div class="assistant-settings-title">Provider settings</div><div class="assistant-settings-row"><div class="provider-select-wrap"><select aria-label="Provider" class="field" id="assistant-provider-select"></select><span aria-hidden="true" class="provider-select-chevron"><span data-lucide="chevronDown"></span></span></div></div><div class="assistant-settings-row" hidden id="assistant-base-url-row"><input aria-label="Base URL" class="field" id="assistant-base-url" placeholder="Base URL" type="url"></div><div class="assistant-settings-row"><input aria-label="API key" autocomplete="off" class="field" id="assistant-api-key" placeholder="API key or token" type="password"></div><div class="assistant-settings-row assistant-model-fetch-row"><div class="model-combo" id="assistant-model-combo"><input aria-autocomplete="list" aria-controls="assistant-model-list" aria-expanded="false" autocomplete="off" class="field" id="assistant-model" placeholder="Model ID" role="combobox" spellcheck="false" type="text"><button aria-label="Show fetched models" class="model-combo-toggle" hidden id="assistant-model-toggle" tabindex="-1" type="button"><span data-lucide="chevronDown"></span></button><div class="model-combo-list" hidden id="assistant-model-list" role="listbox"></div></div><button class="btn" id="assistant-fetch-btn" type="button"><span data-lucide="refreshCw"></span><span>Fetch</span></button></div><div class="assistant-settings-actions"><button class="btn btn-start btn-grow" id="assistant-save-btn" type="button">Save &amp; restart</button><button class="btn" id="assistant-cancel-btn" type="button">Cancel</button></div>
             </div>
                 <div class="assistant-sidebar-footer"><button class="btn btn-start" id="providers-btn" type="button">Providers</button><button aria-label="Providers" class="assistant-rail-btn" id="rail-providers-btn" title="Providers" type="button"><span data-lucide="slidersHorizontal"></span></button></div>
               </aside>
@@ -2379,6 +2420,7 @@ async function loadFiles(path = state.files.path) {
         state.files.path = data.current_path;
         state.files.parent = data.parent_path;
         $('current-file-path').textContent = `Path: ${data.current_path}`;
+        $('current-file-path').title = `Path: ${data.current_path}`;
         $('parent-dir-btn').disabled = !data.parent_path;
         renderActiveFilePreview();
         renderFileEntries(data.entries);
@@ -3565,7 +3607,9 @@ function bindEvents() {
     $('new-chat-btn').addEventListener('click', newChat);
     $('sessions-open-btn').addEventListener('click', () => setDrawerOpen(true));
     $('assistant-backdrop').addEventListener('click', () => setDrawerOpen(false));
-    $('providers-btn').addEventListener('click', () => setProviderPanelOpen(true));
+    $('providers-btn').addEventListener('click', () => {
+        setProviderPanelOpen(!sidebar().classList.contains('settings-open'));
+    });
     $('rail-providers-btn').addEventListener('click', openProvidersFromRail);
     $('assistant-cancel-btn').addEventListener('click', () => setProviderPanelOpen(false));
     // Clicking blank space in the sidebar collapses the provider settings.

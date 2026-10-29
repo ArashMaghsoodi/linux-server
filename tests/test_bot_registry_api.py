@@ -361,6 +361,16 @@ class BotRegistryApiTests(unittest.TestCase):
         self.assertIn(".assistant-settings-panel { max-height:0; padding:0 11px;", page)
         self.assertIn("@media (prefers-reduced-motion: reduce)", page)
 
+    def test_providers_button_toggles_settings_panel_open_and_closed(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+        sidebar_handlers = page.split("// Assistant: sidebar", 1)[1].split(
+            "// Assistant: provider settings", 1
+        )[0]
+
+        self.assertIn("$('providers-btn').addEventListener('click', () => {", sidebar_handlers)
+        self.assertIn("setProviderPanelOpen(!sidebar().classList.contains('settings-open'));", sidebar_handlers)
+
     def test_fetched_model_list_escapes_provider_settings_clipping(self):
         response = self.client.get("/")
         page = response.get_data(as_text=True)
@@ -483,9 +493,43 @@ class BotRegistryApiTests(unittest.TestCase):
         response = self.client.get("/")
         page = response.get_data(as_text=True)
 
-        self.assertIn('id="redeploy-btn" type="button"><span data-lucide="rotateCw"></span><span>Redeploy</span>', page)
-        self.assertIn('href="/logout" class="btn btn-delete"><span data-lucide="logOut"></span><span>Logout</span>', page)
+        self.assertIn('aria-label="Redeploy server" class="btn btn-restart" id="redeploy-btn" type="button"><span data-lucide="rotateCw"></span><span>Redeploy</span>', page)
+        self.assertIn('aria-label="Log out" href="/logout" class="btn btn-delete"><span data-lucide="logOut"></span><span>Logout</span>', page)
         self.assertIn("logOut:", page)
+
+    def test_mobile_controls_keep_top_actions_visible_and_fit_their_content(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn(".top-actions .btn { display:inline-flex; width:32px; min-width:32px;", page)
+        self.assertIn(".top-actions .btn > span:last-child { display:none; }", page)
+        self.assertIn(".bot-stats { grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,2fr); }", page)
+        self.assertIn(".assistant-model-fetch-row .model-combo { flex:1 1 auto; }", page)
+        self.assertIn(".assistant-model-fetch-row #assistant-fetch-btn { flex:0 0 auto; }", page)
+        self.assertIn('id="assistant-fetch-btn" type="button"><span data-lucide="refreshCw"></span><span>Fetch</span>', page)
+        self.assertIn(".section-header #toggle-add-bot { flex:0 0 auto; width:max-content; white-space:nowrap; }", page)
+
+    def test_mobile_logs_hide_line_count_and_visually_hide_status_text(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn(".console-toolbar #log-count { display:none; }", page)
+        self.assertIn(".console-toolbar #log-state-text {", page)
+        self.assertIn("clip:rect(0,0,0,0);", page)
+        self.assertIn(".log-state-dot, .model-status-dot { width:6px; height:6px;", page)
+
+    def test_mobile_file_toolbar_separates_path_from_navigation_and_search(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn(".file-toolbar {\n    display:grid;\n    grid-template-columns:auto minmax(0,1fr);", page)
+        self.assertIn(".file-toolbar #current-file-path {\n    grid-column:1 / -1;", page)
+        self.assertIn("text-overflow:ellipsis;", page)
+        self.assertIn('aria-label="Go to parent directory"', page)
+        self.assertIn('class="file-parent-mobile-label">Up</span>', page)
+        self.assertIn('class="file-parent-desktop-label">Parent directory</span>', page)
+        self.assertIn('placeholder="Search files…"', page)
+        self.assertIn("$('current-file-path').title = `Path: ${data.current_path}`;", page)
 
     def test_delete_file_explorer_entry_rejects_paths_outside_current_directory(self):
         current = self.root / "workspace"
