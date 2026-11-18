@@ -139,15 +139,24 @@ hermes --version
 mkdir -p "$HERMES_HOME_DIR"
 chmod 700 "$HERMES_HOME_DIR"
 
-if ! command -v uv >/dev/null 2>&1; then
-    echo "ERROR: Hermes Agent installation did not provide uv."
+HERMES_TOOLS_DIR="${HERMES_RUNTIME_DIR:-$HERMES_HOME_DIR/tools}"
+UV_BIN=""
+for candidate in "$HERMES_TOOLS_DIR"/uv-*/uv; do
+    if [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
+        UV_BIN="$candidate"
+        break
+    fi
+done
+
+if [ -z "$UV_BIN" ]; then
+    echo "ERROR: Hermes Agent installation did not provide a usable uv runtime in $HERMES_TOOLS_DIR."
     exit 1
 fi
 
 echo
 echo "==> Installing Python 3.12 for bot compatibility"
 export UV_PYTHON_INSTALL_DIR="$HERMES_HOME_DIR/python"
-uv python install 3.12
+"$UV_BIN" python install 3.12
 
 echo "==> Installing Hermes operator context (SOUL.md)"
 if [ -f ./hermes/SOUL.md ]; then
@@ -188,7 +197,7 @@ echo "==> Setting up Panel environment"
 cp -r ./panel/* "$PANEL_DIR/" 2>/dev/null || true
 cd "$PANEL_DIR"
 
-uv venv --python 3.12 --seed .venv
+"$UV_BIN" venv --python 3.12 --seed .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install flask psutil requests pyyaml cryptography flask-sock==0.7.0 simple-websocket==1.1.0
