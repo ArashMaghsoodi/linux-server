@@ -24,8 +24,8 @@ chmod 700 "$NINEROUTER_HOME_DIR"
 
 # Persist the dynamic bot fleet across a fresh runner instance.
 if [ ! -f "$BOT_REGISTRY_PATH" ]; then
-    python3.12 - "$BOT_REGISTRY_PATH" <<'PY'
-import json, os, sys
+    python3 - "$BOT_REGISTRY_PATH" <<'PY'
+import json, sys
 path = sys.argv[1]
 registry = {"version": 1, "bots": [], "encrypted_credentials": {}}
 with open(path, "w", encoding="utf-8") as handle:
@@ -35,11 +35,10 @@ PY
 fi
 
 if [ ! -f "$BOT_CREDENTIALS_KEY_PATH" ]; then
-    python3.12 - "$BOT_CREDENTIALS_KEY_PATH" <<'PY'
-import os, sys
-from cryptography.fernet import Fernet
+    python3 - "$BOT_CREDENTIALS_KEY_PATH" <<'PY'
+import base64, os, sys
 path = sys.argv[1]
-key = Fernet.generate_key().decode("ascii")
+key = base64.urlsafe_b64encode(os.urandom(32)).decode("ascii")
 with open(path, "w", encoding="utf-8") as handle:
     handle.write(f"{key}\n")
 os.chmod(path, 0o600)
@@ -69,7 +68,7 @@ sudo apt-get install -y \
     jq \
     openssh-server
 
-python3.12 "$SCRIPT_DIR/setup_optional_packages.py" "$SETUP_WARNINGS_FILE" \
+python3 "$SCRIPT_DIR/setup_optional_packages.py" "$SETUP_WARNINGS_FILE" \
     htop \
     fastfetch \
     tmux \

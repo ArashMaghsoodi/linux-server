@@ -7,12 +7,19 @@ from unittest.mock import call, patch
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "setup_optional_packages.py"
+SETUP_SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "setup.sh"
 SPEC = importlib.util.spec_from_file_location("setup_optional_packages", SCRIPT_PATH)
 setup_optional_packages = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(setup_optional_packages)
 
 
 class SetupOptionalPackagesTests(unittest.TestCase):
+    def test_setup_does_not_use_python312_before_installing_it(self):
+        setup_script = SETUP_SCRIPT_PATH.read_text(encoding="utf-8")
+        python_install_offset = setup_script.index("==> Installing Python 3.12")
+
+        self.assertNotIn("python3.12", setup_script[:python_install_offset])
+
     def test_failed_optional_package_is_recorded_and_later_packages_are_attempted(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             warnings_path = Path(temporary_directory) / "setup-warnings.txt"
