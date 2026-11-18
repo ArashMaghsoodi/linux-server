@@ -66,7 +66,10 @@ sudo apt-get install -y \
     git \
     wget \
     jq \
-    openssh-server
+    openssh-server \
+    python3 \
+    python3-dev \
+    python3-venv
 
 python3 "$SCRIPT_DIR/setup_optional_packages.py" "$SETUP_WARNINGS_FILE" \
     htop \
@@ -174,24 +177,15 @@ if grep -q '^REQUIRE_API_KEY=true$' "$NINEROUTER_HOME_DIR/.env"; then
 fi
 
 echo
-echo "==> Installing Python 3.12"
-
-sudo add-apt-repository -y ppa:deadsnakes/ppa
-sudo apt-get update
-
-sudo apt-get install -y \
-    python3.12 \
-    python3.12-venv \
-    python3.12-dev
-
-python3.12 --version
+echo "==> Using system Python for the Panel"
+python3 --version
 
 echo
 echo "==> Setting up Panel environment"
 cp -r ./panel/* "$PANEL_DIR/" 2>/dev/null || true
 cd "$PANEL_DIR"
 
-python3.12 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install flask psutil requests pyyaml cryptography flask-sock==0.7.0 simple-websocket==1.1.0

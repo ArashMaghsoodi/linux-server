@@ -13,12 +13,15 @@ setup_optional_packages = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(setup_optional_packages)
 
 
-class SetupOptionalPackagesTests(unittest.TestCase):
-    def test_setup_does_not_use_python312_before_installing_it(self):
+class SetupTests(unittest.TestCase):
+    def test_panel_venv_uses_system_python_without_deadsnakes_ppa(self):
         setup_script = SETUP_SCRIPT_PATH.read_text(encoding="utf-8")
-        python_install_offset = setup_script.index("==> Installing Python 3.12")
 
-        self.assertNotIn("python3.12", setup_script[:python_install_offset])
+        self.assertIn("python3-dev", setup_script)
+        self.assertIn("python3-venv", setup_script)
+        self.assertIn("python3 -m venv .venv", setup_script)
+        self.assertNotIn("python3.12", setup_script)
+        self.assertNotIn("ppa:deadsnakes/ppa", setup_script)
 
     def test_failed_optional_package_is_recorded_and_later_packages_are_attempted(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
