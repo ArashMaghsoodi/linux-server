@@ -14,13 +14,12 @@ SPEC.loader.exec_module(setup_optional_packages)
 
 
 class SetupTests(unittest.TestCase):
-    def test_panel_venv_uses_system_python_without_deadsnakes_ppa(self):
+    def test_panel_venv_uses_cached_uv_managed_python312(self):
         setup_script = SETUP_SCRIPT_PATH.read_text(encoding="utf-8")
 
-        self.assertIn("python3-dev", setup_script)
-        self.assertIn("python3-venv", setup_script)
-        self.assertIn("python3 -m venv .venv", setup_script)
-        self.assertNotIn("python3.12", setup_script)
+        self.assertIn('export UV_PYTHON_INSTALL_DIR="$HERMES_HOME_DIR/python"', setup_script)
+        self.assertIn("uv python install 3.12", setup_script)
+        self.assertIn("uv venv --python 3.12 --seed .venv", setup_script)
         self.assertNotIn("ppa:deadsnakes/ppa", setup_script)
 
     def test_failed_optional_package_is_recorded_and_later_packages_are_attempted(self):

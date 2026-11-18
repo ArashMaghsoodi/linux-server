@@ -59,7 +59,6 @@ echo
 echo "==> Updating system"
 sudo apt-get update
 sudo apt-get install -y \
-    software-properties-common \
     build-essential \
     curl \
     openssl \
@@ -67,9 +66,7 @@ sudo apt-get install -y \
     wget \
     jq \
     openssh-server \
-    python3 \
-    python3-dev \
-    python3-venv
+    python3
 
 python3 "$SCRIPT_DIR/setup_optional_packages.py" "$SETUP_WARNINGS_FILE" \
     htop \
@@ -142,6 +139,16 @@ hermes --version
 mkdir -p "$HERMES_HOME_DIR"
 chmod 700 "$HERMES_HOME_DIR"
 
+if ! command -v uv >/dev/null 2>&1; then
+    echo "ERROR: Hermes Agent installation did not provide uv."
+    exit 1
+fi
+
+echo
+echo "==> Installing Python 3.12 for bot compatibility"
+export UV_PYTHON_INSTALL_DIR="$HERMES_HOME_DIR/python"
+uv python install 3.12
+
 echo "==> Installing Hermes operator context (SOUL.md)"
 if [ -f ./hermes/SOUL.md ]; then
     install -m 600 ./hermes/SOUL.md "$HERMES_HOME_DIR/SOUL.md"
@@ -177,15 +184,11 @@ if grep -q '^REQUIRE_API_KEY=true$' "$NINEROUTER_HOME_DIR/.env"; then
 fi
 
 echo
-echo "==> Using system Python for the Panel"
-python3 --version
-
-echo
 echo "==> Setting up Panel environment"
 cp -r ./panel/* "$PANEL_DIR/" 2>/dev/null || true
 cd "$PANEL_DIR"
 
-python3 -m venv .venv
+uv venv --python 3.12 --seed .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install flask psutil requests pyyaml cryptography flask-sock==0.7.0 simple-websocket==1.1.0

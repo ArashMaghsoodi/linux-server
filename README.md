@@ -108,6 +108,7 @@ While connected, open `http://localhost:20129/dashboard`. The dashboard password
 | --- | --- |
 | Workflow stops during Hermes startup | Confirm `HERMES_API_SERVER_KEY` exists and is non-empty. |
 | An optional setup utility could not be installed | The current Ubuntu runner uses `fastfetch` instead of unavailable `neofetch`; other optional utility failures are non-fatal and listed in the startup status-bot message and `Setup Environment` logs. |
+| Bot install fails building `pydantic-core` | Bot environments use the panel's Python 3.12 runtime for wheel compatibility. After a runtime change, use **Update** to rebuild existing bot environments, or retry adding the bot after redeploying. |
 | Panel URL is missing | Check the workflow’s startup/tunnel steps and logs; Cloudflare Quick Tunnels are external and can fail. |
 | Redeploy action does not start a run | Check `GH_PAT` is present and has permission to dispatch workflows in this repository. |
 | Status bot sends nothing | Check both `STATUS_BOT_TOKEN` and numeric `OWNER_ID`, and verify the bot can message that user/chat. |
