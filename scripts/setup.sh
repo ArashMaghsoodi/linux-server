@@ -2,6 +2,7 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_DIR="$HOME/bot-server"
 BOT_DIR="$BASE_DIR/bots"
 PANEL_DIR="$BASE_DIR/panel"
@@ -9,6 +10,10 @@ HERMES_HOME_DIR="$HOME/.hermes"
 NINEROUTER_HOME_DIR="$HOME/.9router"
 BOT_REGISTRY_PATH="${BOT_REGISTRY_PATH:-$BASE_DIR/bot-registry.json}"
 BOT_CREDENTIALS_KEY_PATH="${BOT_CREDENTIALS_KEY_PATH:-$BASE_DIR/.bot_credentials_key}"
+SETUP_WARNINGS_FILE="${SETUP_WARNINGS_FILE:-/tmp/server-setup-warnings.txt}"
+export SETUP_WARNINGS_FILE
+
+: > "$SETUP_WARNINGS_FILE"
 
 echo "======================================"
 echo "Server setup"
@@ -62,8 +67,11 @@ sudo apt-get install -y \
     git \
     wget \
     jq \
+    openssh-server
+
+python3.12 "$SCRIPT_DIR/setup_optional_packages.py" "$SETUP_WARNINGS_FILE" \
     htop \
-    neofetch \
+    fastfetch \
     tmux \
     nano \
     vim \
@@ -72,8 +80,7 @@ sudo apt-get install -y \
     net-tools \
     iputils-ping \
     dnsutils \
-    unzip \
-    openssh-server
+    unzip
 
 echo
 echo "==> Installing cloudflared"

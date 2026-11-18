@@ -107,6 +107,7 @@ While connected, open `http://localhost:20129/dashboard`. The dashboard password
 | Symptom | Check |
 | --- | --- |
 | Workflow stops during Hermes startup | Confirm `HERMES_API_SERVER_KEY` exists and is non-empty. |
+| An optional setup utility could not be installed | The current Ubuntu runner uses `fastfetch` instead of unavailable `neofetch`; other optional utility failures are non-fatal and listed in the startup status-bot message and `Setup Environment` logs. |
 | Panel URL is missing | Check the workflow’s startup/tunnel steps and logs; Cloudflare Quick Tunnels are external and can fail. |
 | Redeploy action does not start a run | Check `GH_PAT` is present and has permission to dispatch workflows in this repository. |
 | Status bot sends nothing | Check both `STATUS_BOT_TOKEN` and numeric `OWNER_ID`, and verify the bot can message that user/chat. |

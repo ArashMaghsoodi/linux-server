@@ -16,14 +16,18 @@ send_telegram() {
         return
     fi
 
-    curl -sS \
+    if curl -fsS \
         --max-time 15 \
         -X POST \
         "https://api.telegram.org/bot${STATUS_BOT_TOKEN}/sendMessage" \
         --data-urlencode "chat_id=${OWNER_ID}" \
         --data-urlencode "text=${MESSAGE}" \
         --data-urlencode "parse_mode=HTML" \
-        >/dev/null || true
+        >/dev/null; then
+        echo "Startup notification sent to Telegram."
+    else
+        echo "WARNING: Unable to send the startup notification to Telegram." >&2
+    fi
 }
 
 get_uptime() {
@@ -104,6 +108,21 @@ elif [ -n "${HERMES_TELEGRAM_BOT_TOKEN:-}" ]; then
     HERMES_TELEGRAM_STATUS="🔴 Hermes Telegram: FAILED (see Logs → Hermes Gateway)"
 fi
 
+SETUP_WARNING_HTML=""
+SETUP_WARNING_PLAIN=""
+SETUP_WARNINGS_FILE="${SETUP_WARNINGS_FILE:-/tmp/server-setup-warnings.txt}"
+if [ -s "$SETUP_WARNINGS_FILE" ]; then
+    SETUP_WARNINGS=$(cat "$SETUP_WARNINGS_FILE")
+    SETUP_WARNINGS_ESCAPED=$(printf '%s' "$SETUP_WARNINGS" | sed \
+        -e 's/&/\&amp;/g' \
+        -e 's/</\&lt;/g' \
+        -e 's/>/\&gt;/g')
+    SETUP_WARNING_HTML="<b>⚠️ Setup warnings - inspect</b>
+<pre>${SETUP_WARNINGS_ESCAPED}</pre>"
+    SETUP_WARNING_PLAIN="  ⚠️ Setup warnings - inspect:
+$(printf '%s\n' "$SETUP_WARNINGS" | sed 's/^/    /')"
+fi
+
 TELEGRAM_MSG="<b>🚀 BOT SERVER IS ONLINE</b>
 
 <b>🌐 Web Control Panel</b>
@@ -116,6 +135,7 @@ TELEGRAM_MSG="<b>🚀 BOT SERVER IS ONLINE</b>
 ${STATUS_FLEET}
 ${HERMES_STATUS}
 ${HERMES_TELEGRAM_STATUS}
+${SETUP_WARNING_HTML}
 
 <b>📊 System Resources</b>
 CPU load: ${CPU_INFO}
@@ -131,6 +151,7 @@ PLAIN_MSG="==================================================
 ${STATUS_FLEET_PLAIN}
         ${HERMES_STATUS}
         ${HERMES_TELEGRAM_STATUS}
+${SETUP_WARNING_PLAIN}
   ------------------------------------------------
   📊 System Resources:
     CPU load: ${CPU_INFO}
@@ -142,4 +163,3 @@ echo "$PLAIN_MSG"
 echo
 
 send_telegram "$TELEGRAM_MSG"
-echo "Startup notification sent to Telegram."
