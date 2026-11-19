@@ -527,6 +527,73 @@ class BotRegistryApiTests(unittest.TestCase):
         self.assertIn("sidebar().classList.add('model-list-open')", page)
         self.assertIn("sidebar().classList.remove('model-list-open')", page)
 
+    def test_model_capabilities_are_extracted_only_from_explicit_metadata(self):
+        data = {"data": [
+            {
+                "id": "provider/vision-tools",
+                "architecture": {"input_modalities": ["text", "image"]},
+                "supported_parameters": ["tools", "tool_choice"],
+            },
+            {
+                "id": "provider/text-only",
+                "architecture": {"input_modalities": ["text"]},
+                "supported_parameters": [],
+            },
+            {
+                "id": "provider/explicit-support",
+                "supports_image_input": True,
+                "supports_tool_calling": False,
+            },
+            {"id": "provider/unknown"},
+        ]}
+
+        self.assertEqual(panel_app.extract_model_capabilities(data), {
+            "provider/vision-tools": {"vision": True, "tools": True},
+            "provider/text-only": {"vision": False, "tools": False},
+            "provider/explicit-support": {"vision": True, "tools": False},
+        })
+
+    def test_model_list_api_preserves_ids_and_returns_capability_metadata(self):
+        provider_response = Mock(ok=True)
+        provider_response.json.return_value = {"data": [{
+            "id": "provider/vision-tools",
+            "architecture": {"input_modalities": ["text", "image"]},
+            "supported_parameters": ["tools"],
+        }]}
+
+        with patch.object(panel_app.requests, "get", return_value=provider_response):
+            response = self.client.post("/api/assistant/models", json={
+                "provider": "custom",
+                "base_url": "https://models.example/v1",
+                "api_key": "test-key",
+            })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["models"], ["provider/vision-tools"])
+        self.assertEqual(response.json["capabilities"], {
+            "provider/vision-tools": {"vision": True, "tools": True},
+        })
+
+    def test_fetched_model_options_show_capability_indicators(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn("function modelCapabilityBadge", page)
+        self.assertIn("modelCapabilities", page)
+        self.assertIn("supported == null ? '?' : ''", page)
+        self.assertIn("eye: '<path", page)
+        self.assertIn("data.capabilities", page)
+
+    def test_assistant_attach_button_has_spacing_and_model_list_spans_its_row(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn(".assistant-attach { flex:0 0 30px; width:30px; min-width:30px; height:30px; margin-left:8px;", page)
+        self.assertIn(".assistant-model-fetch-row { position:relative; }", page)
+        self.assertIn(".assistant-model-fetch-row .model-combo { position:static;", page)
+        self.assertIn(".model-combo-control { position:relative;", page)
+        self.assertIn('<div class="model-combo-control"><input aria-autocomplete="list"', page)
+
     def test_provider_model_dropdown_icon_tracks_open_state(self):
         response = self.client.get("/")
         page = response.get_data(as_text=True)

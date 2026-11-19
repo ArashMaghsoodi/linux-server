@@ -1146,23 +1146,85 @@ def build_model_list_headers(base_url, api_key):
         headers["Authorization"] = f"Bearer {api_key}"
     return headers
 
-def extract_model_ids(data):
+def _provider_model_items(data):
     items = data.get("data") if isinstance(data, dict) else data
     if not isinstance(items, list) and isinstance(data, dict):
         items = data.get("models")
-    if not isinstance(items, list):
-        return []
+    return items if isinstance(items, list) else []
+
+
+def _provider_model_id(item):
+    model_id = item if isinstance(item, str) else (item.get("id") or item.get("name")) if isinstance(item, dict) else None
+    if not isinstance(model_id, str) or not model_id.strip():
+        return None
+    model_id = model_id.strip()
+    if model_id.startswith("models/"):
+        model_id = model_id[len("models/"):]
+    return model_id
+
+
+def extract_model_ids(data):
     models = []
-    for item in items:
-        model_id = item if isinstance(item, str) else (item.get("id") or item.get("name")) if isinstance(item, dict) else None
-        if not isinstance(model_id, str) or not model_id.strip():
+    for item in _provider_model_items(data):
+        model_id = _provider_model_id(item)
+        if model_id is None:
             continue
-        model_id = model_id.strip()
-        if model_id.startswith("models/"):
-            model_id = model_id[len("models/"):]
         if model_id not in models:
             models.append(model_id)
     return models
+
+
+def extract_model_capabilities(data):
+    capabilities_by_model = {}
+    for item in _provider_model_items(data):
+        if not isinstance(item, dict):
+            continue
+        model_id = _provider_model_id(item)
+        if model_id is None:
+            continue
+
+        model_capabilities = {}
+        advertised = item.get("capabilities")
+        if not isinstance(advertised, dict):
+            advertised = {}
+        for capability, aliases in {
+            "vision": ("vision", "image_input", "supports_vision", "supports_image_input"),
+            "tools": (
+                "tools", "tool_calling", "function_calling", "supports_tools",
+                "supports_tool_calling", "supports_function_calling",
+            ),
+        }.items():
+            for source in (item, advertised):
+                value = next((source[key] for key in aliases if isinstance(source.get(key), bool)), None)
+                if value is not None:
+                    model_capabilities[capability] = value
+                    break
+
+        architecture = item.get("architecture")
+        if not isinstance(architecture, dict):
+            architecture = {}
+        if "vision" not in model_capabilities:
+            modalities = architecture.get("input_modalities", item.get("input_modalities"))
+            if isinstance(modalities, list) and all(isinstance(value, str) for value in modalities):
+                model_capabilities["vision"] = any(
+                    value.lower() in {"image", "images", "image_url", "vision"}
+                    for value in modalities
+                )
+            elif isinstance(architecture.get("modality"), str):
+                inputs = architecture["modality"].split("->", 1)[0].lower().split("+")
+                model_capabilities["vision"] = any(value in {"image", "images", "vision"} for value in inputs)
+
+        if "tools" not in model_capabilities:
+            parameters = item.get("supported_parameters")
+            if isinstance(parameters, list) and all(isinstance(value, str) for value in parameters):
+                model_capabilities["tools"] = any(
+                    value.lower() in {"tools", "tool_choice", "functions", "function_call"}
+                    for value in parameters
+                )
+        if model_capabilities:
+            capabilities_by_model[model_id] = model_capabilities
+    return capabilities_by_model
+
 
 @app.route("/api/assistant/models", methods=["POST"])
 @login_required
@@ -1196,8 +1258,11 @@ def fetch_assistant_models():
         if not response.ok:
             hint = " - check the API key" if response.status_code in (401, 403) else ""
             return jsonify({"error": f"Provider returned HTTP {response.status_code}{hint}"}), 502
-        models = extract_model_ids(response.json())
-        return jsonify({"models": models[:500]})
+        model_data = response.json()
+        models = extract_model_ids(model_data)[:500]
+        capabilities = extract_model_capabilities(model_data)
+        capabilities = {model_id: capabilities[model_id] for model_id in models if model_id in capabilities}
+        return jsonify({"models": models, "capabilities": capabilities})
     except (requests.RequestException, ValueError):
         return jsonify({"error": "Could not fetch models from provider"}), 502
 
