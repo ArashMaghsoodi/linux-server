@@ -595,10 +595,11 @@ class BotRegistryApiTests(unittest.TestCase):
         response = self.client.get("/")
         page = response.get_data(as_text=True)
 
-        self.assertIn('<div class="assistant-input-wrap"><textarea aria-label="Message Hermes"', page)
-        self.assertIn('id="assistant-input" placeholder="Ask Hermes to inspect or manage the server…" rows="2"></textarea><button aria-label="Send message" class="btn btn-start assistant-send" id="assistant-send" title="Send message" type="button"><span data-lucide="sendHorizontal"></span></button></div></div>', page)
+        self.assertIn('<div class="assistant-input-wrap"><input accept="image/*', page)
+        self.assertIn('<textarea aria-label="Message Hermes" class="assistant-input field" dir="auto" id="assistant-input"', page)
+        self.assertIn('<button aria-label="Send message" class="btn btn-start assistant-send" id="assistant-send"', page)
         self.assertIn("sendHorizontal:", page)
-        self.assertIn(".assistant-composer { min-height:var(--assistant-bottom-rail); max-height:200px; flex:0 0 auto; display:flex; align-items:center;", page)
+        self.assertIn(".assistant-composer { min-height:var(--assistant-bottom-rail); max-height:260px; flex:0 0 auto; display:flex; flex-direction:column; align-items:stretch;", page)
         self.assertIn("border-top:0", page)
         self.assertIn(".assistant-input-wrap { flex:1; min-width:0; max-height:184px; display:flex; align-items:center;", page)
         self.assertIn("height:34px; min-height:34px; max-height:174px", page)
@@ -607,6 +608,105 @@ class BotRegistryApiTests(unittest.TestCase):
         self.assertIn(".assistant-send { flex:0 0 30px;", page)
         self.assertNotIn("position:absolute; right:7px; bottom:7px", page)
         self.assertIn("button.setAttribute('aria-label', busy ? 'Stop response' : 'Send message')", page)
+
+    def test_assistant_composer_supports_images_and_text_documents(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn('class="assistant-attachments" hidden id="assistant-attachments"', page)
+        self.assertIn('id="assistant-file-input"', page)
+        self.assertIn('accept="image/*,.txt,.md,.csv,.json,.xml,.yaml,.yml,.log,.py,.js,.ts,.tsx,.jsx,.html,.css,.sh,.sql,.toml,.ini,.conf"', page)
+        self.assertIn("function renderAssistantContent", page)
+        self.assertIn("function buildAssistantContent", page)
+        self.assertIn("assistant.attachments.push(...selected)", page)
+
+    def test_assistant_chat_forwards_image_and_text_content_parts(self):
+        image_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l3sAAAAASUVORK5CYII="
+        image_part = {
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{image_data}", "detail": "auto"},
+        }
+        messages = [{
+            "role": "user",
+            "content": [image_part.copy() for _ in range(4)],
+        }, {
+            "role": "assistant",
+            "content": "Earlier text-only reply",
+        }, {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Describe these files"},
+                image_part,
+                {"type": "text", "text": "[Attached file: notes.txt]\nremember the backup"},
+            ],
+        }]
+        upstream = Mock(
+            ok=True,
+            headers={"Content-Type": "text/event-stream"},
+            iter_lines=Mock(return_value=iter([])),
+        )
+
+        with patch.object(panel_app, "HERMES_API_KEY", "test-key"), patch.object(
+            panel_app.requests, "post", return_value=upstream
+        ) as post:
+            response = self.client.post(
+                "/api/assistant/chat",
+                json={"messages": messages},
+                headers={"X-Assistant-Request-Id": "multimodal-test"},
+            )
+            response.get_data()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(post.call_args.kwargs["json"]["messages"], messages)
+
+    def test_assistant_chat_limits_images_per_message(self):
+        image_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l3sAAAAASUVORK5CYII="
+        image_part = {
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{image_data}"},
+        }
+        messages = [{"role": "user", "content": [image_part.copy() for _ in range(5)]}]
+
+        with patch.object(panel_app, "HERMES_API_KEY", "test-key"):
+            response = self.client.post(
+                "/api/assistant/chat",
+                json={"messages": messages},
+                headers={"X-Assistant-Request-Id": "too-many-images-test"},
+            )
+
+        self.assertEqual(response.status_code, 413)
+
+    def test_assistant_chat_rejects_non_data_image_urls(self):
+        messages = [{
+            "role": "user",
+            "content": [{"type": "image_url", "image_url": {"url": "https://example.com/image.png"}}],
+        }]
+
+        with patch.object(panel_app, "HERMES_API_KEY", "test-key"):
+            response = self.client.post(
+                "/api/assistant/chat",
+                json={"messages": messages},
+                headers={"X-Assistant-Request-Id": "invalid-image-test"},
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json["error"], "Invalid image content")
+
+    def test_assistant_chat_rejects_non_string_image_urls(self):
+        messages = [{
+            "role": "user",
+            "content": [{"type": "image_url", "image_url": {"url": 123}}],
+        }]
+
+        with patch.object(panel_app, "HERMES_API_KEY", "test-key"):
+            response = self.client.post(
+                "/api/assistant/chat",
+                json={"messages": messages},
+                headers={"X-Assistant-Request-Id": "invalid-image-type-test"},
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json["error"], "Invalid image content")
 
     def test_bot_grid_empty_cells_use_page_background(self):
         response = self.client.get("/")

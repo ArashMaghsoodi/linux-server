@@ -405,10 +405,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .assistant-message-actions { display:flex; gap:5px; }
 .assistant-message-action { opacity:0; visibility:hidden; pointer-events:none; border:0; background:transparent; color:#687679; font-size:9px; cursor:pointer; padding:4px 2px; transition:opacity .16s ease,visibility 0s linear .16s; }
 .assistant-message-group:hover .assistant-message-action,.assistant-message-group:focus-within .assistant-message-action { opacity:1; visibility:visible; pointer-events:auto; transition:opacity .16s ease,visibility 0s; }
-.assistant-composer { min-height:var(--assistant-bottom-rail); max-height:200px; flex:0 0 auto; display:flex; align-items:center; padding:8px 12px; border-top:0; }
+.assistant-composer { min-height:var(--assistant-bottom-rail); max-height:260px; flex:0 0 auto; display:flex; flex-direction:column; align-items:stretch; gap:6px; padding:8px 12px; border-top:0; }
+.assistant-attachments { display:flex; gap:8px; max-width:100%; overflow-x:auto; }
+.assistant-attachment { height:42px; min-width:0; display:flex; align-items:center; gap:7px; padding:3px 6px; border:1px solid #303b40; border-radius:5px; background:#111719; color:#aebaba; font-size:10px; }
+.assistant-attachment img { width:32px; height:32px; flex:0 0 auto; border-radius:3px; object-fit:cover; }
+.assistant-attachment-name { max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.assistant-attachment-remove { width:24px; height:28px; display:grid; place-items:center; padding:0; border:0; background:transparent; color:#879497; cursor:pointer; }
+.assistant-attachment-remove:hover { color:var(--text); }
+.assistant-message-image { display:block; max-width:min(360px,100%); max-height:320px; border-radius:4px; object-fit:contain; }
 .assistant-input-wrap { flex:1; min-width:0; max-height:184px; display:flex; align-items:center; gap:6px; padding:4px 6px 4px 0; border:1px solid #303b40; border-radius:5px; background:#0f1417; }
 .assistant-input-wrap:focus-within { border-color:#3d4c52; }
 .assistant-input { flex:1; width:0; min-width:0; height:34px; min-height:34px; max-height:174px; padding:4px 9px; border:0; border-radius:0; background:transparent; line-height:18px; resize:none; overflow-y:auto; font-family:var(--assistant-font); }
+.assistant-attach { flex:0 0 30px; width:30px; min-width:30px; height:30px; padding:0; }
+.assistant-attach .lucide-icon { width:15px; height:15px; }
 .assistant-send { flex:0 0 30px; width:30px; min-width:30px; height:30px; padding:0; }
 .assistant-send.is-busy { width:auto; min-width:58px; padding:0 8px; }
 .assistant-send .lucide-icon { width:16px; height:16px; }
@@ -734,7 +743,7 @@ dialog::backdrop { background:rgba(4,7,8,.72); }
               <div class="assistant-main">
                 <div class="assistant-model-strip"><button class="btn btn-compact assistant-drawer-toggle" id="sessions-open-btn" type="button">Chats</button><span class="assistant-model-label">Active model</span><span class="assistant-model-value" id="assistant-model-name">—</span><div aria-live="polite" class="model-status status-indicator" data-state="busy" id="assistant-model-status" role="status"><span class="model-status-dot"></span><span class="model-status-text">BUSY</span></div></div>
                 <div class="assistant-messages" id="assistant-messages"></div><div class="assistant-activity" id="assistant-activity"></div>
-                <div class="assistant-composer"><div class="assistant-input-wrap"><textarea aria-label="Message Hermes" class="assistant-input field" dir="auto" id="assistant-input" placeholder="Ask Hermes to inspect or manage the server…" rows="2"></textarea><button aria-label="Send message" class="btn btn-start assistant-send" id="assistant-send" title="Send message" type="button"><span data-lucide="sendHorizontal"></span></button></div></div>
+                <div class="assistant-composer"><div aria-label="Attachments" aria-live="polite" class="assistant-attachments" hidden id="assistant-attachments" role="list"></div><div class="assistant-input-wrap"><input accept="image/*,.txt,.md,.csv,.json,.xml,.yaml,.yml,.log,.py,.js,.ts,.tsx,.jsx,.html,.css,.sh,.sql,.toml,.ini,.conf" aria-label="Attach images or text documents" class="assistant-file-input" hidden id="assistant-file-input" multiple type="file"><button aria-label="Attach images or text documents" class="btn assistant-attach" id="assistant-attach-btn" title="Attach images or text documents" type="button"><span data-lucide="paperclip"></span></button><textarea aria-label="Message Hermes" class="assistant-input field" dir="auto" id="assistant-input" placeholder="Ask Hermes to inspect or manage the server…" rows="2"></textarea><button aria-label="Send message" class="btn btn-start assistant-send" id="assistant-send" title="Send message" type="button"><span data-lucide="sendHorizontal"></span></button></div></div>
               </div>
             </div>
           </div>
@@ -881,6 +890,7 @@ const ICON_PATHS = {
     messageCircle: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
     palette: '<path d="M12 22a10 10 0 1 1 10-10c0 1.7-1.3 3-3 3h-1.8c-.8 0-1.2.9-.7 1.5l.3.4c1 1.3.1 3.1-1.5 3.1Z"/><path d="M7.5 10h.01M12 7.5h.01M16.5 10h.01"/>',
     pause: '<rect width="4" height="16" x="6" y="4" rx="1"/><rect width="4" height="16" x="14" y="4" rx="1"/>',
+    paperclip: '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
     pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
     play: '<path d="m7 4 13 8-13 8z"/>',
     plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
@@ -966,6 +976,7 @@ const state = {
         providers: PROVIDER_FALLBACK,
         modelOptions: [],
         modelActive: -1,
+        attachments: [],
     },
 };
 
@@ -2918,6 +2929,148 @@ async function previewFile(path) {
 
 /* 6. Server Assistant ------------------------------------------------------- */
 const assistant = state.assistant;
+const ASSISTANT_IMAGE_TYPES = new Map([
+    ['png', 'image/png'], ['jpg', 'image/jpeg'], ['jpeg', 'image/jpeg'],
+    ['gif', 'image/gif'], ['webp', 'image/webp'],
+]);
+const ASSISTANT_DOCUMENT_EXTENSIONS = new Set([
+    'txt', 'md', 'csv', 'json', 'xml', 'yaml', 'yml', 'log',
+    'py', 'js', 'ts', 'tsx', 'jsx', 'html', 'css', 'sh',
+    'sql', 'toml', 'ini', 'conf',
+]);
+const ASSISTANT_MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const ASSISTANT_MAX_DOCUMENT_BYTES = 64 * 1024;
+
+function assistantTextContent(content) {
+    if (typeof content === 'string') return content;
+    if (!Array.isArray(content)) return '';
+    return content
+        .filter(part => part?.type === 'text' && typeof part.text === 'string')
+        .map(part => part.text)
+        .join('\n');
+}
+
+function renderAssistantContent(target, content) {
+    target.replaceChildren();
+    if (typeof content === 'string') {
+        renderChatMessage(target, content);
+        return;
+    }
+    if (!Array.isArray(content)) return;
+    for (const part of content) {
+        if (part?.type === 'text' && typeof part.text === 'string') {
+            const text = h('div', { class: 'assistant-message-text' });
+            renderChatMessage(text, part.text);
+            target.append(text);
+            continue;
+        }
+        const url = part?.type === 'image_url' ? part.image_url?.url : '';
+        if (typeof url === 'string' && /^data:image\/(?:png|jpeg|gif|webp);base64,/.test(url)) {
+            target.append(h('img', {
+                class: 'assistant-message-image',
+                src: url,
+                alt: 'Attached image',
+                loading: 'lazy',
+            }));
+        }
+    }
+}
+
+function renderPendingAttachments() {
+    const tray = $('assistant-attachments');
+    tray.hidden = assistant.attachments.length === 0;
+    tray.replaceChildren(...assistant.attachments.map((attachment, index) => {
+        const preview = attachment.data
+            ? h('img', { src: attachment.data, alt: '', loading: 'lazy' })
+            : h('span', { html: ICONS.file, 'aria-hidden': 'true' });
+        return h('div', { class: 'assistant-attachment', role: 'listitem' },
+            preview,
+            h('span', { class: 'assistant-attachment-name', text: attachment.name, title: attachment.name }),
+            h('button', {
+                class: 'assistant-attachment-remove',
+                type: 'button',
+                title: `Remove ${attachment.name}`,
+                'aria-label': `Remove ${attachment.name}`,
+                html: ICONS.x,
+                onclick: () => {
+                    assistant.attachments.splice(index, 1);
+                    renderPendingAttachments();
+                },
+            }));
+    }));
+}
+
+function readAssistantImage(file, mimeType) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
+        reader.onload = () => {
+            const result = String(reader.result || '');
+            const encoded = result.slice(result.indexOf(',') + 1);
+            resolve(`data:${mimeType};base64,${encoded}`);
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+async function onAssistantFilesSelected(event) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length) return;
+    if (assistant.attachments.length + files.length > 4) {
+        showToast('Attach up to four files per message.', 'error');
+        return;
+    }
+
+    try {
+        const selected = [];
+        for (const file of files) {
+            const extension = file.name.split('.').pop().toLowerCase();
+            const mimeType = ASSISTANT_IMAGE_TYPES.get(extension);
+            if (file.type.startsWith('image/') || mimeType) {
+                if (!mimeType) throw new Error(`${file.name} is not a supported image. Use PNG, JPEG, GIF, or WebP.`);
+                if (file.size > ASSISTANT_MAX_IMAGE_BYTES) throw new Error(`${file.name} exceeds the 4 MB image limit.`);
+                selected.push({ name: file.name, size: file.size, data: await readAssistantImage(file, mimeType) });
+            } else {
+                if (!ASSISTANT_DOCUMENT_EXTENSIONS.has(extension)) {
+                    throw new Error(`${file.name} is not a supported text document.`);
+                }
+                if (file.size > ASSISTANT_MAX_DOCUMENT_BYTES) throw new Error(`${file.name} exceeds the 64 KB document limit.`);
+                selected.push({ name: file.name, text: await file.text() });
+            }
+        }
+        const textLength = assistant.attachments
+            .filter(attachment => typeof attachment.text === 'string')
+            .reduce((length, attachment) => length + attachment.text.length, 0)
+            + selected.filter(attachment => typeof attachment.text === 'string')
+                .reduce((length, attachment) => length + attachment.text.length, 0);
+        if (textLength > 20000) throw new Error('Attached text documents must total 20,000 characters or less.');
+        const imageSize = assistant.attachments
+            .filter(attachment => attachment.data)
+            .reduce((size, attachment) => size + attachment.size, 0)
+            + selected.filter(attachment => attachment.data)
+                .reduce((size, attachment) => size + attachment.size, 0);
+        if (imageSize > 8 * 1024 * 1024) throw new Error('Attached images must total 8 MB or less.');
+        assistant.attachments.push(...selected);
+        renderPendingAttachments();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+function buildAssistantContent(text) {
+    if (assistant.attachments.length === 0) return text;
+    const content = [];
+    if (text) content.push({ type: 'text', text });
+    for (const attachment of assistant.attachments) {
+        if (attachment.data) {
+            content.push({ type: 'image_url', image_url: { url: attachment.data, detail: 'auto' } });
+        } else {
+            content.push({ type: 'text', text: `[Attached file: ${attachment.name}]\n${attachment.text}` });
+        }
+    }
+    return content;
+}
 
 /* 6a. Health pill ("Active model") */
 function setModelStatus(status, { model, hint = '' } = {}) {
@@ -3100,15 +3253,28 @@ async function deleteSession(sessionId, label) {
     await loadSessions();
 }
 
-/** Hermes also stores tool calls/results; the chat view only replays plain user/assistant text. */
+/** Hermes also stores tool calls/results; replay user and assistant text plus supported image parts. */
 function normalizeSessionMessages(rows) {
     return (Array.isArray(rows) ? rows : [])
         .map(row => {
             let content = row?.content;
-            if (Array.isArray(content)) content = content.map(part => (typeof part === 'string' ? part : part?.text || '')).join('');
+            if (Array.isArray(content)) {
+                content = content.flatMap(part => {
+                    if (typeof part === 'string') return [{ type: 'text', text: part }];
+                    if (part?.type === 'text' && typeof part.text === 'string') return [{ type: 'text', text: part.text }];
+                    const url = part?.type === 'image_url' ? part.image_url?.url : '';
+                    return typeof url === 'string' && /^data:image\/(?:png|jpeg|gif|webp);base64,/.test(url)
+                        ? [{ type: 'image_url', image_url: { url, detail: 'auto' } }]
+                        : [];
+                });
+            }
             return { role: row?.role, content };
         })
-        .filter(m => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim());
+        .filter(message => (message.role === 'user' || message.role === 'assistant')
+            && (typeof message.content === 'string'
+                ? message.content.trim()
+                : Array.isArray(message.content) && message.content.some(part =>
+                    part.type === 'image_url' || (part.type === 'text' && part.text.trim()))));
 }
 
 function rememberSession(sessionId) {
@@ -3126,6 +3292,8 @@ async function loadSession(sessionId) {
     try {
         const data = await apiJson(`/api/assistant/sessions/${encodeURIComponent(sessionId)}`, undefined, 'Could not load session');
         rememberSession(sessionId);
+        assistant.attachments = [];
+        renderPendingAttachments();
         assistant.messages = normalizeSessionMessages(data.messages);
         const title = data.session?.title || '';
         assistant.autoTitle = assistant.messages.length === 0 && /^New chat( \(\d+\))?$/.test(title);
@@ -3141,6 +3309,8 @@ async function loadSession(sessionId) {
 
 function resetChatView() {
     assistant.messages = [];
+    assistant.attachments = [];
+    renderPendingAttachments();
     assistant.autoTitle = false;
     rememberSession('');
     setActivity();
@@ -3158,6 +3328,7 @@ async function createSession(title, autoTitle) {
 }
 
 function titleFromMessage(text) {
+    text = assistantTextContent(text);
     const line = text.split('\n').map(part => part.trim()).find(Boolean) || DEFAULT_CHAT_TITLE;
     const compact = line.replace(/\s+/g, ' ');
     return compact.length > 48 ? `${compact.slice(0, 47)}…` : compact;
@@ -3448,11 +3619,12 @@ function renderMessages() {
     const box = $('assistant-messages');
     box.replaceChildren(...assistant.messages.map((message, index) => {
         const messageElement = h('div', { class: `assistant-message ${message.role}`, dir: 'auto' });
-        renderChatMessage(messageElement, message.content);
+        renderAssistantContent(messageElement, message.content);
+        const copyContent = assistantTextContent(message.content) || '[Image attachment]';
         const actions = h('div', { class: 'assistant-message-actions' },
             h('button', {
                 class: 'assistant-message-action', type: 'button', title: 'Copy message', 'aria-label': 'Copy message', html: ICONS.copy,
-                onclick: () => copyText(message.content, 'Message copied to clipboard!'),
+                onclick: () => copyText(copyContent, 'Message copied to clipboard!'),
             }));
         const content = h('div', { class: 'assistant-message-content' }, messageElement, actions);
         const group = h('div', { class: `assistant-message-group ${message.role}` }, content);
@@ -3539,10 +3711,22 @@ async function readReplyStream(response, message, progress) {
 async function sendMessage(reuseLastUserMessage = false) {
     const input = $('assistant-input');
     const last = assistant.messages[assistant.messages.length - 1];
-    const content = reuseLastUserMessage && last?.role === 'user' ? last.content : input.value.trim();
-    if (!content || assistant.abort) return;
-    input.value = '';
-    resizeAssistantInput();
+    const content = reuseLastUserMessage && last?.role === 'user'
+        ? last.content
+        : buildAssistantContent(input.value.trim());
+    const textContent = assistantTextContent(content);
+    const hasImage = Array.isArray(content) && content.some(part => part.type === 'image_url');
+    if ((!textContent.trim() && !hasImage) || assistant.abort) return;
+    if (textContent.length > 20000) {
+        showToast('Message text and attached documents must total 20,000 characters or less.', 'error');
+        return;
+    }
+    if (!reuseLastUserMessage) {
+        input.value = '';
+        assistant.attachments = [];
+        renderPendingAttachments();
+        resizeAssistantInput();
+    }
 
     if (!reuseLastUserMessage) assistant.messages.push({ role: 'user', content });
     const reply = { role: 'assistant', content: 'Sending to Hermes...' };
@@ -3876,6 +4060,8 @@ function bindEvents() {
 
     // Assistant: chat
     $('assistant-send').addEventListener('click', onSendClick);
+    $('assistant-attach-btn').addEventListener('click', () => $('assistant-file-input').click());
+    $('assistant-file-input').addEventListener('change', onAssistantFilesSelected);
     const assistantInput = $('assistant-input');
     assistantInput.addEventListener('input', resizeAssistantInput);
     assistantInput.addEventListener('keydown', onInputKeydown);

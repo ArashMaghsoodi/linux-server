@@ -81,6 +81,8 @@ The bot is cloned and installed on the runner. Its environment values are encryp
 
 In the Assistant panel, open **Providers**, choose an AI provider, enter its provider API key, fetch/select a model, and save. Hermes provider keys are separate from `HERMES_API_SERVER_KEY`; Hermes settings are restored from the Actions cache when available.
 
+Assistant chats accept up to four image or text-file attachments per message. Images may be PNG, JPEG, GIF, or WebP (up to 4 MB each and 8 MB total); text/source files are included in the prompt (up to 64 KB each). Prompt text and attached text combined are limited to 20,000 characters. Image understanding requires a vision-capable model. PDF and Office files are not supported.
+
 9Router runs locally on the runner and is not exposed as a public website. Its dashboard is available through an SSH port forward when Tailscale SSH is working:
 
 ```bash

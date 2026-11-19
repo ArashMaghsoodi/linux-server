@@ -1,3 +1,5 @@
+import base64
+import binascii
 import os
 import re
 import time
@@ -1205,6 +1207,8 @@ def assistant_chat():
     if not HERMES_API_KEY:
         return jsonify({"error": "Hermes API key is not configured"}), 503
 
+    if request.content_length is not None and request.content_length > 16 * 1024 * 1024:
+        return jsonify({"error": "Assistant request is too large"}), 413
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict) or not isinstance(payload.get("messages"), list):
         return jsonify({"error": "messages must be a JSON array"}), 400
@@ -1217,11 +1221,76 @@ def assistant_chat():
             return jsonify({"error": "Invalid message"}), 400
         role = message.get("role")
         content = message.get("content")
-        if role not in ["user", "assistant"] or not isinstance(content, str):
+        if role not in ["user", "assistant"]:
             return jsonify({"error": "Invalid message shape"}), 400
-        if len(content) > 20000:
-            return jsonify({"error": "Message is too large"}), 413
-        messages.append({"role": role, "content": content})
+        if isinstance(content, str):
+            if len(content) > 20000:
+                return jsonify({"error": "Message is too large"}), 413
+            messages.append({"role": role, "content": content})
+            continue
+        if role != "user" or not isinstance(content, list) or not 1 <= len(content) <= 9:
+            return jsonify({"error": "Invalid message shape"}), 400
+
+        normalized_content = []
+        text_size = 0
+        image_bytes_total = 0
+        image_count = 0
+        for part in content:
+            if not isinstance(part, dict):
+                return jsonify({"error": "Invalid message content"}), 400
+            if part.get("type") == "text" and isinstance(part.get("text"), str):
+                text = part["text"]
+                text_size += len(text)
+                if text_size > 20000:
+                    return jsonify({"error": "Message is too large"}), 413
+                normalized_content.append({"type": "text", "text": text})
+                continue
+            image = part.get("image_url")
+            if part.get("type") != "image_url" or not isinstance(image, dict):
+                return jsonify({"error": "Invalid message content"}), 400
+            image_url = image.get("url")
+            if not isinstance(image_url, str):
+                return jsonify({"error": "Invalid image content"}), 400
+            match = re.fullmatch(
+                r"data:image/(png|jpeg|gif|webp);base64,([A-Za-z0-9+/]*={0,2})",
+                image_url,
+            )
+            if not match:
+                return jsonify({"error": "Invalid image content"}), 400
+            encoded = match.group(2)
+            if len(encoded) > 5_592_408:
+                return jsonify({"error": "Image is too large"}), 413
+            try:
+                image_data = base64.b64decode(encoded, validate=True)
+            except (ValueError, binascii.Error):
+                return jsonify({"error": "Invalid image content"}), 400
+            media_type = match.group(1)
+            valid_signature = (
+                media_type == "png" and image_data.startswith(b"\x89PNG\r\n\x1a\n")
+                or media_type == "jpeg" and image_data.startswith(b"\xff\xd8\xff")
+                or media_type == "gif" and image_data.startswith((b"GIF87a", b"GIF89a"))
+                or media_type == "webp" and len(image_data) >= 12
+                and image_data.startswith(b"RIFF") and image_data[8:12] == b"WEBP"
+            )
+            image_size = len(image_data)
+            if not valid_signature:
+                return jsonify({"error": "Invalid image content"}), 400
+            if image_size > 4 * 1024 * 1024 or image_bytes_total + image_size > 8 * 1024 * 1024:
+                return jsonify({"error": "Image is too large"}), 413
+            image_bytes_total += image_size
+            image_count += 1
+            if image_count > 4:
+                return jsonify({"error": "Too many attachments"}), 413
+            detail = image.get("detail", "auto")
+            if detail not in ("auto", "low", "high"):
+                return jsonify({"error": "Invalid image content"}), 400
+            normalized_content.append({
+                "type": "image_url",
+                "image_url": {"url": image_url, "detail": detail},
+            })
+        if not normalized_content:
+            return jsonify({"error": "Invalid message shape"}), 400
+        messages.append({"role": role, "content": normalized_content})
 
     upstream_payload = {
         "model": get_hermes_model(),
