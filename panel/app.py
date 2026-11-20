@@ -1226,6 +1226,58 @@ def extract_model_capabilities(data):
     return capabilities_by_model
 
 
+@app.route("/api/assistant/model-capabilities")
+@login_required
+def active_assistant_model_capabilities():
+    config_path = os.path.join(HERMES_HOME, "config.yaml")
+    try:
+        with open(config_path, "r", encoding="utf-8") as config_file:
+            config = yaml.safe_load(config_file) or {}
+    except FileNotFoundError:
+        config = {}
+    except (OSError, yaml.YAMLError):
+        return jsonify({"error": "Unable to read Hermes model settings"}), 503
+
+    model_settings = config.get("model", {}) if isinstance(config, dict) else {}
+    if isinstance(model_settings, str):
+        model_settings = {"default": model_settings}
+    if not isinstance(model_settings, dict):
+        model_settings = {}
+    model_id = model_settings.get("default") or model_settings.get("model") or HERMES_MODEL
+    if not isinstance(model_id, str) or not model_id.strip():
+        return jsonify({"model": "", "capabilities": {}})
+    model_id = model_id.strip()
+
+    provider = model_settings.get("provider", "openrouter")
+    provider_aliases = {"google": "gemini", "github_copilot": "copilot"}
+    provider = provider_aliases.get(provider, provider) if isinstance(provider, str) else provider
+    provider_settings = SETTINGS_PROVIDERS.get(provider) if isinstance(provider, str) else None
+    if not provider_settings:
+        return jsonify({"model": model_id, "capabilities": {}})
+
+    base_url = model_settings.get("base_url") or provider_settings[2]
+    if not isinstance(base_url, str) or not valid_provider_url(base_url):
+        return jsonify({"error": "Configured provider URL is invalid"}), 503
+    base_url = base_url.strip().rstrip("/")
+    env_values = read_hermes_env()
+    api_key = env_values.get(provider_settings[1], "").strip().strip("\"'")
+    if not api_key and isinstance(model_settings.get("api_key"), str):
+        api_key = model_settings["api_key"].strip()
+    try:
+        response = requests.get(
+            f"{base_url}/models",
+            headers=build_model_list_headers(base_url, api_key),
+            timeout=8,
+        )
+        if not response.ok:
+            return jsonify({"error": f"Provider returned HTTP {response.status_code}"}), 502
+        normalized_model_id = _provider_model_id(model_id) or model_id
+        capabilities = extract_model_capabilities(response.json()).get(normalized_model_id, {})
+        return jsonify({"model": model_id, "capabilities": capabilities})
+    except (requests.RequestException, ValueError):
+        return jsonify({"error": "Could not load active model capabilities"}), 502
+
+
 @app.route("/api/assistant/models", methods=["POST"])
 @login_required
 def fetch_assistant_models():
@@ -2011,6 +2063,20 @@ def _file_explorer_roots():
     return [os.path.realpath(os.path.expanduser("~")), os.path.realpath("/tmp")]
 
 
+ASSISTANT_IMAGE_MIME_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
+ASSISTANT_DOCUMENT_EXTENSIONS = {
+    ".txt", ".md", ".csv", ".json", ".xml", ".yaml", ".yml", ".log",
+    ".py", ".js", ".ts", ".tsx", ".jsx", ".html", ".css", ".sh", ".sql",
+    ".toml", ".ini", ".conf",
+}
+
+
 def _path_is_within_root(path, root):
     try:
         return os.path.commonpath([path, root]) == root
@@ -2097,6 +2163,127 @@ def search_files():
         "truncated": truncated,
         "recursive": True,
     })
+
+
+@app.route("/api/assistant/files/search")
+@login_required
+def search_assistant_files():
+    query = request.args.get("q", "").strip()
+    if len(query) > 200 or any(ord(character) < 32 for character in query):
+        return jsonify({"error": "Search must be 200 characters or less"}), 400
+
+    entries = []
+    truncated = False
+    result_limit = 100
+    visited_limit = 20000
+    visited = 0
+    folded_query = query.casefold()
+    try:
+        for root in _file_explorer_roots():
+            if not os.path.isdir(root):
+                continue
+            for current_path, directories, files in os.walk(root, followlinks=False):
+                directories[:] = sorted(
+                    name for name in directories
+                    if not name.startswith(".venv")
+                    and name != "__pycache__"
+                    and not os.path.islink(os.path.join(current_path, name))
+                )
+                files.sort()
+                visited += len(directories) + len(files)
+                if visited > visited_limit:
+                    truncated = True
+                    break
+                for name in files:
+                    if any(ord(character) < 32 for character in name):
+                        continue
+                    extension = os.path.splitext(name)[1].lower()
+                    mime_type = ASSISTANT_IMAGE_MIME_TYPES.get(extension)
+                    max_size = 4 * 1024 * 1024 if mime_type else 64 * 1024
+                    if not mime_type and extension not in ASSISTANT_DOCUMENT_EXTENSIONS:
+                        continue
+                    path = os.path.join(current_path, name)
+                    if os.path.islink(path):
+                        continue
+                    relative_path = os.path.relpath(path, root).replace(os.sep, "/")
+                    if folded_query and folded_query not in name.casefold() and folded_query not in relative_path.casefold():
+                        continue
+                    try:
+                        entry_stat = os.stat(path, follow_symlinks=False)
+                    except OSError:
+                        continue
+                    if not stat.S_ISREG(entry_stat.st_mode) or entry_stat.st_size > max_size:
+                        continue
+                    entries.append({
+                        "name": name,
+                        "path": path,
+                        "relative_path": relative_path,
+                        "size_bytes": entry_stat.st_size,
+                        "mime_type": mime_type or "text/plain",
+                    })
+                    if len(entries) >= result_limit:
+                        truncated = True
+                        break
+                if truncated:
+                    break
+            if truncated:
+                break
+    except OSError:
+        return jsonify({"error": "Could not search server files"}), 403
+
+    entries.sort(key=lambda entry: (entry["name"].casefold(), entry["path"].casefold()))
+    return jsonify({"entries": entries, "truncated": truncated})
+
+
+@app.route("/api/assistant/files/content")
+@login_required
+def assistant_file_content():
+    requested_path = request.args.get("path", "")
+    if not requested_path or len(requested_path) > 4096 or any(ord(character) < 32 for character in requested_path):
+        return jsonify({"error": "A valid file path is required"}), 400
+    absolute_path = os.path.abspath(requested_path)
+    resolved_path = _resolve_file_explorer_path(requested_path)
+    if resolved_path is None or os.path.normcase(resolved_path) != os.path.normcase(absolute_path):
+        return jsonify({"error": "Access denied"}), 403
+    extension = os.path.splitext(resolved_path)[1].lower()
+    mime_type = ASSISTANT_IMAGE_MIME_TYPES.get(extension)
+    if not mime_type and extension not in ASSISTANT_DOCUMENT_EXTENSIONS:
+        return jsonify({"error": "Unsupported attachment type"}), 415
+    max_size = 4 * 1024 * 1024 if mime_type else 64 * 1024
+    try:
+        entry_stat = os.lstat(resolved_path)
+        if stat.S_ISLNK(entry_stat.st_mode) or not stat.S_ISREG(entry_stat.st_mode):
+            return jsonify({"error": "File not found"}), 404
+        if entry_stat.st_size > max_size:
+            return jsonify({"error": "File exceeds the attachment size limit"}), 413
+        file_descriptor = os.open(
+            resolved_path,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+        )
+        with os.fdopen(file_descriptor, "rb") as file_handle:
+            opened_stat = os.fstat(file_handle.fileno())
+            if not stat.S_ISREG(opened_stat.st_mode) or (
+                opened_stat.st_dev, opened_stat.st_ino
+            ) != (entry_stat.st_dev, entry_stat.st_ino):
+                return jsonify({"error": "File changed while being read"}), 403
+            content = file_handle.read(max_size + 1)
+    except FileNotFoundError:
+        return jsonify({"error": "File not found"}), 404
+    except OSError:
+        return jsonify({"error": "Could not read this file"}), 403
+    if len(content) > max_size:
+        return jsonify({"error": "File exceeds the attachment size limit"}), 413
+    result = {
+        "name": os.path.basename(resolved_path),
+        "path": resolved_path,
+        "size_bytes": len(content),
+        "mime_type": mime_type or "text/plain",
+    }
+    if mime_type:
+        result["data"] = f"data:{mime_type};base64,{base64.b64encode(content).decode('ascii')}"
+    else:
+        result["text"] = content.decode("utf-8", errors="replace")
+    return jsonify(result)
 
 
 @app.route("/api/files/delete", methods=["POST"])

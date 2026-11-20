@@ -1,8 +1,11 @@
+import json
 import os
 import select
+import shutil
+import subprocess
 import sys
-import threading
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -53,6 +56,18 @@ class BotRegistryApiTests(unittest.TestCase):
         self.addCleanup(setattr, panel_app, "BOT_INSTALL_PAYLOADS", original_inputs)
         with self.client.session_transaction() as session:
             session["logged_in"] = True
+
+    def run_javascript(self, source):
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("Node.js is required to exercise terminal JavaScript helpers.")
+        result = subprocess.run(
+            [node, "-e", source],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
 
     @staticmethod
     def _restore_jobs(jobs):
@@ -246,6 +261,174 @@ class BotRegistryApiTests(unittest.TestCase):
             {f"bots/{directory}/bot.py" for directory in bot_directories},
         )
 
+    def test_assistant_file_search_lists_supported_files_across_file_explorer_roots(self):
+        home = self.root / "home"
+        temporary = self.root / "tmp"
+        (home / "bots").mkdir(parents=True)
+        temporary.mkdir()
+        bot_file = home / "bots" / "bot.py"
+        notes_file = temporary / "bot-notes.md"
+        unsupported_file = home / "bots" / "bot.exe"
+        hidden_file = home / ".secret" / "bot.py"
+        bot_file.write_text("print('hello')", encoding="utf-8")
+        notes_file.write_text("notes", encoding="utf-8")
+        unsupported_file.write_text("binary", encoding="utf-8")
+        hidden_file.parent.mkdir()
+        hidden_file.write_text("hidden", encoding="utf-8")
+        with patch.object(panel_app, "_file_explorer_roots", return_value=[str(home), str(temporary)]):
+            response = self.client.get(
+                "/api/assistant/files/search",
+                query_string={"q": "bot"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            {entry["path"] for entry in response.json["entries"]},
+            {str(bot_file), str(notes_file), str(hidden_file)},
+        )
+        self.assertTrue(all(entry["size_bytes"] >= 0 for entry in response.json["entries"]))
+
+    def test_assistant_file_content_returns_text_and_image_attachments(self):
+        root = self.root / "home"
+        root.mkdir()
+        text_file = root / "bot.py"
+        text_file.write_text("print('hello')", encoding="utf-8")
+        image_file = root / "diagram.png"
+        image_bytes = b"\x89PNG\r\n\x1a\nimage"
+        image_file.write_bytes(image_bytes)
+        with patch.object(panel_app, "_file_explorer_roots", return_value=[str(root)]):
+            text_response = self.client.get(
+                "/api/assistant/files/content",
+                query_string={"path": str(text_file)},
+            )
+            image_response = self.client.get(
+                "/api/assistant/files/content",
+                query_string={"path": str(image_file)},
+            )
+
+        self.assertEqual(text_response.status_code, 200)
+        self.assertEqual(text_response.json["name"], "bot.py")
+        self.assertEqual(text_response.json["text"], "print('hello')")
+        self.assertEqual(image_response.status_code, 200)
+        self.assertEqual(image_response.json["name"], "diagram.png")
+        self.assertEqual(image_response.json["data"], "data:image/png;base64,iVBORw0KGgppbWFnZQ==")
+
+    def test_assistant_file_content_rejects_unsupported_and_out_of_scope_paths(self):
+        root = self.root / "home"
+        root.mkdir()
+        unsupported_file = root / "archive.zip"
+        unsupported_file.write_bytes(b"archive")
+        outside_file = self.root / "outside.py"
+        outside_file.write_text("secret", encoding="utf-8")
+        with patch.object(panel_app, "_file_explorer_roots", return_value=[str(root)]):
+            unsupported_response = self.client.get(
+                "/api/assistant/files/content",
+                query_string={"path": str(unsupported_file)},
+            )
+            outside_response = self.client.get(
+                "/api/assistant/files/content",
+                query_string={"path": str(outside_file)},
+            )
+
+        self.assertEqual(unsupported_response.status_code, 415)
+        self.assertEqual(outside_response.status_code, 403)
+
+    def test_assistant_file_suggestions_are_exposed_in_the_composer(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn('contenteditable="true"', page)
+        self.assertIn('id="assistant-file-suggestions"', page)
+        self.assertIn("function searchAssistantFiles", page)
+        self.assertIn("function insertAssistantFileMention", page)
+        self.assertIn("function serializeAssistantInput", page)
+        self.assertIn("`/api/assistant/files/content?path=${encodeURIComponent(entry.path)}`", page)
+        self.assertIn("contenteditable: 'false'", page)
+        self.assertIn("function reconcileAssistantFileMentions", page)
+        self.assertIn("function adjacentAssistantMention(direction)", page)
+        self.assertIn("function highlightAssistantMentions", page)
+        self.assertIn("assistant.attachments.filter(attachment => attachment.source === 'server')", page)
+
+    def test_enter_selects_the_active_assistant_file_suggestion_without_sending(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+        handler_body = page.split("function onInputKeydown(event) {", 1)[1].split(
+            "\n}\n\n/* 7. Bot controls", 1
+        )[0]
+        source = (
+            "const list = { hidden: false };\n"
+            "const assistant = { fileSuggestions: { activeIndex: 1, items: [{name:'first'}, {name:'active'}] } };\n"
+            "let selected = null, sendCount = 0, prevented = false;\n"
+            "function $(id) { return list; }\n"
+            "function addAssistantServerFile(entry) { selected = entry; }\n"
+            "function sendMessage() { sendCount += 1; }\n"
+            "function setActiveAssistantSuggestion() {}\n"
+            "function deleteAdjacentAssistantMention() { return false; }\n"
+            "function closeAssistantFileSuggestions() {}\n"
+            "function onInputKeydown(event) {" + handler_body + "\n}\n"
+            "onInputKeydown({ key: 'Enter', shiftKey: false, preventDefault() { prevented = true; } });\n"
+            "console.log(JSON.stringify({ selected: selected && selected.name, sendCount, prevented }));"
+        )
+
+        result = json.loads(self.run_javascript(source))
+
+        self.assertEqual(result, {"selected": "active", "sendCount": 0, "prevented": True})
+
+    def test_assistant_file_mention_insertion_adds_space_and_places_caret_after_it(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+        insertion_body = page.split("function insertAssistantFileMention(entry, attachment) {", 1)[1].split(
+            "\n}\n\nasync function addAssistantServerFile", 1
+        )[0]
+        source = (
+            "const editor = { focus() {}, dispatchEvent() {} };\n"
+            "const mentionNode = { nextSibling: null, after(node) { this.nextSibling = node; } };\n"
+            "const originalRange = { deleteContents() {}, insertNode(node) { this.node = node; } };\n"
+            "const selection = { removeAllRanges() {}, addRange() {} };\n"
+            "const assistant = { fileSuggestions: { query: 'bot' } };\n"
+            "function getCurrentAssistantMention() { return { query: 'bot', range: originalRange }; }\n"
+            "function $(id) { return editor; }\n"
+            "function h(tag, props) { mentionNode.textContent = props.text; return mentionNode; }\n"
+            "let caretNode = null, caretOffset = null;\n"
+            "const document = { createTextNode(text) { return { nodeType: 3, textContent: text }; }, "
+            "createRange() { return { setStartAfter(node) { caretNode = node; }, "
+            "setStart(node, offset) { caretNode = node; caretOffset = offset; }, collapse() {} }; } };\n"
+            "const window = { getSelection() { return selection; } };\n"
+            "function insertAssistantFileMention(entry, attachment) {" + insertion_body + "\n}\n"
+            "const inserted = insertAssistantFileMention({ name: 'bot.py', path: '/bot.py' }, { mentionId: 'id' });\n"
+            "console.log(JSON.stringify({ inserted, mention: mentionNode.textContent, "
+            "space: mentionNode.nextSibling && mentionNode.nextSibling.textContent, "
+            "caretAfterSpace: caretNode === mentionNode.nextSibling && caretOffset === null }));"
+        )
+
+        result = json.loads(self.run_javascript(source))
+
+        self.assertEqual(result, {
+            "inserted": True,
+            "mention": "@bot.py",
+            "space": " ",
+            "caretAfterSpace": True,
+        })
+
+    def test_assistant_uuid_helper_falls_back_when_random_uuid_is_unavailable(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+        helper_body = page.split("function createAssistantUuid() {", 1)[1].split("\n}\n", 1)[0]
+        source = (
+            "const crypto = { getRandomValues(bytes) { bytes.fill(17); return bytes; } };\n"
+            "function createAssistantUuid() {" + helper_body + "\n}\n"
+            "const id = createAssistantUuid();\n"
+            "console.log(JSON.stringify({ id, valid: /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-"
+            "[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id) }));"
+        )
+
+        result = json.loads(self.run_javascript(source))
+
+        self.assertTrue(result["valid"])
+        self.assertIn("mentionId: createAssistantUuid()", page)
+        self.assertIn("assistant.requestId = createAssistantUuid()", page)
+        self.assertNotIn("crypto.randomUUID()", page)
+
     def test_file_search_results_render_path_as_a_separate_subtitle(self):
         response = self.client.get("/")
         page = response.get_data(as_text=True)
@@ -420,7 +603,7 @@ class BotRegistryApiTests(unittest.TestCase):
         self.assertIn('data-lucide="keyboard"', page)
         self.assertIn('data-lucide="trash"', page)
         self.assertIn('data-lucide="copy"', page)
-        self.assertIn("const TERMINAL_PROMPT = 'runner@runnervm48cm3:~$';", page)
+        self.assertIn("const TERMINAL_PROMPT = /", page)
         self.assertIn("$('terminal-clear').addEventListener('click', clearTerminalHistory);", page)
         self.assertIn("$('terminal-copy').addEventListener('click', copyTerminalContents);", page)
         self.assertNotIn('id="terminal-connect"', page)
@@ -440,6 +623,60 @@ class BotRegistryApiTests(unittest.TestCase):
             "if (data.supported === false) throw new Error('Interactive terminals require a Linux host.');",
             page,
         )
+
+    def test_terminal_clear_finds_the_latest_prompt_with_a_dynamic_hostname(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+        prompt_pattern = page.split("const TERMINAL_PROMPT = ", 1)[1].split(";", 1)[0]
+        clear_body = page.split("function clearTerminalHistory() {", 1)[1].split(
+            "\n\nfunction copyTerminalContents()", 1
+        )[0]
+        source = (
+            "const TERMINAL_PROMPT = " + prompt_pattern + ";\n"
+            "const lines = ['runner@runnervm0hi8g:~$ ^C', 'runner@runnervm0hi8g:~$', '', '', ''];\n"
+            "let clearCount = 0;\n"
+            "const writes = [];\n"
+            "const toasts = [];\n"
+            "const state = { terminal: { instance: { buffer: { active: { baseY: 0, cursorY: 1, "
+            "length: lines.length, getLine(index) { return { isWrapped: false, "
+            "translateToString() { return lines[index]; } }; } } }, "
+            "clear() { clearCount += 1; }, write(text) { writes.push(text); } } } };\n"
+            "function showToast(message, type) { toasts.push({ message, type }); }\n"
+            "function $(id) { throw new Error('Unexpected element lookup: ' + id); }\n"
+            "function clearTerminalHistory() {" + clear_body + "\n"
+            "clearTerminalHistory();\n"
+            "console.log(JSON.stringify({ clearCount, writes, toasts }));"
+        )
+
+        result = json.loads(self.run_javascript(source))
+
+        self.assertEqual(result["clearCount"], 1)
+        self.assertEqual(result["writes"], ["\u001b[Hrunner@runnervm0hi8g:~$"])
+        self.assertEqual(result["toasts"], [])
+
+    def test_terminal_copy_omits_unused_blank_screen_rows(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+        buffer_body = page.split("function getTerminalBufferText(buffer) {", 1)[1].split(
+            "\n}\n\nfunction clearTerminalHistory()", 1
+        )[0]
+        source = (
+            "function getTerminalBufferText(buffer) {" + buffer_body + "\n}\n"
+            "const lines = ['runner@host:~$ ^C', 'runner@host:~$', '', '', ''];\n"
+            "const buffer = { length: lines.length, getLine(index) { return { "
+            "translateToString() { return lines[index]; } }; } };\n"
+            "console.log(JSON.stringify(getTerminalBufferText(buffer)));"
+        )
+
+        result = json.loads(self.run_javascript(source))
+
+        self.assertEqual(result, "runner@host:~$ ^C\nrunner@host:~$")
+
+    def test_generic_button_hover_is_limited_to_hover_capable_devices(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn("@media (hover:hover) { .btn:hover:not(:disabled)", page)
 
     def test_terminal_token_is_only_available_to_authenticated_sessions(self):
         response = self.client.get("/api/terminal/token")
@@ -518,14 +755,18 @@ class BotRegistryApiTests(unittest.TestCase):
         finally:
             _stop_shell(pid, master_fd, stopped)
 
-    def test_fetched_model_list_escapes_provider_settings_clipping(self):
+    def test_fetched_model_list_is_portaled_and_bounded_to_the_viewport(self):
         response = self.client.get("/")
         page = response.get_data(as_text=True)
 
-        self.assertIn(".assistant-sidebar.model-list-open { overflow:visible; }", page)
-        self.assertIn(".assistant-sidebar.model-list-open .assistant-settings-panel { overflow:visible; }", page)
-        self.assertIn("sidebar().classList.add('model-list-open')", page)
-        self.assertIn("sidebar().classList.remove('model-list-open')", page)
+        self.assertIn(".model-combo-list { position:fixed;", page)
+        self.assertIn("function positionModelList()", page)
+        self.assertIn("document.body.append(list);", page)
+        self.assertIn("Math.min(220, availableSpace)", page)
+        self.assertIn("combo.append(list);", page)
+        self.assertIn("if (!open) closeModelList();", page)
+        self.assertIn("window.addEventListener('scroll', repositionModelList, true)", page)
+        self.assertNotIn(".assistant-sidebar.model-list-open { overflow:visible; }", page)
 
     def test_model_capabilities_are_extracted_only_from_explicit_metadata(self):
         data = {"data": [
@@ -574,6 +815,41 @@ class BotRegistryApiTests(unittest.TestCase):
             "provider/vision-tools": {"vision": True, "tools": True},
         })
 
+    def test_active_model_capabilities_are_loaded_from_saved_provider_settings(self):
+        hermes_home = self.root / "hermes"
+        hermes_home.mkdir()
+        (hermes_home / "config.yaml").write_text(
+            "model:\n  provider: google\n  default: models/gemini-vision-model\n",
+            encoding="utf-8",
+        )
+        env_path = hermes_home / ".env"
+        env_path.write_text("GOOGLE_API_KEY=test-key\n", encoding="utf-8")
+        original_home = panel_app.HERMES_HOME
+        original_env_file = panel_app.HERMES_ENV_FILE
+        panel_app.HERMES_HOME = str(hermes_home)
+        panel_app.HERMES_ENV_FILE = str(env_path)
+        self.addCleanup(setattr, panel_app, "HERMES_HOME", original_home)
+        self.addCleanup(setattr, panel_app, "HERMES_ENV_FILE", original_env_file)
+
+        provider_response = Mock(ok=True)
+        provider_response.json.return_value = {"data": [{
+            "id": "gemini-vision-model",
+            "architecture": {"input_modalities": ["text", "image"]},
+        }]}
+        with patch.object(panel_app.requests, "get", return_value=provider_response) as get:
+            response = self.client.get("/api/assistant/model-capabilities")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json, {
+            "model": "models/gemini-vision-model",
+            "capabilities": {"vision": True},
+        })
+        self.assertEqual(
+            get.call_args.args[0],
+            "https://generativelanguage.googleapis.com/v1beta/models",
+        )
+        self.assertEqual(get.call_args.kwargs["headers"]["x-goog-api-key"], "test-key")
+
     def test_fetched_model_options_show_capability_indicators(self):
         response = self.client.get("/")
         page = response.get_data(as_text=True)
@@ -583,6 +859,22 @@ class BotRegistryApiTests(unittest.TestCase):
         self.assertIn("supported == null ? '?' : ''", page)
         self.assertIn("eye: '<path", page)
         self.assertIn("data.capabilities", page)
+        self.assertIn('id="assistant-model-capabilities"', page)
+        self.assertIn("function loadActiveModelCapabilities", page)
+
+    def test_assistant_api_key_can_toggle_masking(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn('id="assistant-api-key" placeholder="API key or token" type="password"', page)
+        self.assertIn('id="assistant-api-key-toggle"', page)
+        self.assertIn('aria-label="Show API key" class="assistant-api-key-toggle"', page)
+        self.assertIn("function toggleAssistantApiKeyVisibility()", page)
+        self.assertIn("input.type = visible ? 'text' : 'password';", page)
+        self.assertIn("button.setAttribute('aria-label', `${action} API key`);", page)
+        self.assertIn("button.innerHTML = visible ? ICONS.eyeOff : ICONS.eye;", page)
+        self.assertIn("$('assistant-api-key-toggle').addEventListener('click', toggleAssistantApiKeyVisibility)", page)
+        self.assertIn("apiJson('/api/assistant/model-capabilities'", page)
 
     def test_assistant_attach_button_has_spacing_and_model_list_spans_its_row(self):
         response = self.client.get("/")
@@ -625,12 +917,20 @@ class BotRegistryApiTests(unittest.TestCase):
         self.assertIn(".provider-select-wrap .field { appearance:none;", page)
         self.assertIn(".provider-select-chevron .lucide-icon { stroke-linecap:round; stroke-linejoin:round; }", page)
 
-    def test_assistant_chat_list_renders_newest_sessions_first(self):
+    def test_assistant_chat_list_preserves_newest_first_api_order(self):
         response = self.client.get("/")
         page = response.get_data(as_text=True)
 
-        self.assertIn("const newestFirst = [...sessions].reverse();", page)
-        self.assertIn("...newestFirst.map(session =>", page)
+        self.assertIn("list.replaceChildren(...sessions.map(session =>", page)
+        self.assertNotIn("const newestFirst = [...sessions].reverse();", page)
+
+    def test_mobile_console_tabs_keep_labels_clear_of_visible_scrollbar(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn(".console-tabs { height:48px; min-height:48px; min-width:0; align-items:flex-start; overflow-x:auto; overflow-y:hidden;", page)
+        self.assertIn("scrollbar-width:auto; scrollbar-color:#71878b #1b2428;", page)
+        self.assertIn(".console-tabs::-webkit-scrollbar { height:10px; }", page)
 
     def test_assistant_chat_history_actions_are_revealed_on_hover_and_focus(self):
         response = self.client.get("/")
@@ -655,22 +955,24 @@ class BotRegistryApiTests(unittest.TestCase):
         self.assertIn("@media (prefers-reduced-motion: reduce)", page)
         self.assertIn(".assistant-message-action { transition:none; }", page)
         self.assertIn("class: `assistant-message ${message.role}`, dir: 'auto'", page)
-        self.assertIn('<textarea aria-label="Message Hermes" class="assistant-input field" dir="auto"', page)
+        self.assertIn('<div aria-autocomplete="list" aria-controls="assistant-file-suggestions"', page)
+        self.assertIn('contenteditable="true"', page)
+        self.assertIn('role="textbox" spellcheck="true"></div>', page)
         self.assertIn("h('p', { dir: 'auto' })", page)
 
     def test_assistant_send_button_is_icon_only_and_inside_composer_input(self):
         response = self.client.get("/")
         page = response.get_data(as_text=True)
 
-        self.assertIn('<div class="assistant-input-wrap"><input accept="image/*', page)
-        self.assertIn('<textarea aria-label="Message Hermes" class="assistant-input field" dir="auto" id="assistant-input"', page)
+        self.assertIn('<div class="assistant-input-wrap" id="assistant-input-wrap"><input accept="image/*', page)
+        self.assertIn('<div aria-autocomplete="list" aria-controls="assistant-file-suggestions" aria-expanded="false" aria-label="Message Hermes" class="assistant-input field" contenteditable="true"', page)
         self.assertIn('<button aria-label="Send message" class="btn btn-start assistant-send" id="assistant-send"', page)
         self.assertIn("sendHorizontal:", page)
         self.assertIn(".assistant-composer { min-height:var(--assistant-bottom-rail); max-height:260px; flex:0 0 auto; display:flex; flex-direction:column; align-items:stretch;", page)
         self.assertIn("border-top:0", page)
-        self.assertIn(".assistant-input-wrap { flex:1; min-width:0; max-height:184px; display:flex; align-items:center;", page)
+        self.assertIn(".assistant-input-wrap { position:relative; flex:1; min-width:0; max-height:184px; display:flex; align-items:center;", page)
         self.assertIn("height:34px; min-height:34px; max-height:174px", page)
-        self.assertIn("assistantInput.addEventListener('input', resizeAssistantInput)", page)
+        self.assertIn("assistantInput.addEventListener('input', onAssistantInput)", page)
         self.assertIn("input.style.height = `${Math.max(34, Math.min(input.scrollHeight, 174))}px`", page)
         self.assertIn(".assistant-send { flex:0 0 30px;", page)
         self.assertNotIn("position:absolute; right:7px; bottom:7px", page)
@@ -686,6 +988,49 @@ class BotRegistryApiTests(unittest.TestCase):
         self.assertIn("function renderAssistantContent", page)
         self.assertIn("function buildAssistantContent", page)
         self.assertIn("assistant.attachments.push(...selected)", page)
+        self.assertIn("assistantInput.addEventListener('paste', onAssistantPaste)", page)
+        self.assertIn("function onAssistantPaste", page)
+        self.assertIn("item.getAsFile()", page)
+
+    def test_assistant_image_messages_render_clickable_previews_above_text(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn("function assistantImageParts", page)
+        self.assertIn("assistant-message-image-stack", page)
+        self.assertIn("Preview attached image", page)
+        self.assertIn('id="assistant-image-preview-dialog"', page)
+        self.assertIn("openAssistantImagePreview", page)
+
+    def test_assistant_image_preview_dialog_animates_open_and_close(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn("display .18s allow-discrete,overlay .18s allow-discrete", page)
+        self.assertIn("@starting-style", page)
+        self.assertIn(".assistant-image-preview-dialog, .assistant-image-preview-dialog::backdrop { transition:none; }", page)
+
+    def test_assistant_image_preview_restores_focus_without_scrolling(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn("assistant.imagePreviewTrigger?.focus({ preventScroll: true });", page)
+
+    def test_assistant_composer_placeholder_starts_at_left_and_remains_vertically_centered(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn(".assistant-input:empty::before { content:attr(data-placeholder);", page)
+        self.assertIn(".assistant-input-wrap { position:relative; flex:1; min-width:0; max-height:184px; display:flex; align-items:center;", page)
+        self.assertIn("padding:8px 9px", page)
+
+    def test_pending_image_attachment_opens_preview_before_sending(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertIn("class: 'assistant-attachment-preview'", page)
+        self.assertIn("'aria-label': `Preview ${attachment.name}`", page)
+        self.assertIn("onclick: event => openAssistantImagePreview(attachment.data, event.currentTarget)", page)
 
     def test_assistant_chat_forwards_image_and_text_content_parts(self):
         image_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l3sAAAAASUVORK5CYII="
